@@ -1,0 +1,57 @@
+# octworld/training/wan/config/train_base.yaml
+#
+# Single source of truth for training hyper-parameters + experiment naming.
+# Consumed by:
+#   - init_training_folder.py  → derives experiment_name, copies this file to
+#                                 experiments/<name>/config.yaml
+#   - train.py                 → loads experiments/<name>/config.yaml and drives
+#                                 OctWorldWanTrainer
+experiment:
+  data_tag: dl3dv           # used to derive experiment_name
+  name_suffix: v2           # -> dl3dv-octworld-wan-wan14b_i2v-b64-v2
+
+model:
+  variant: wan14b_i2v       # wan14b_i2v / tiny
+  framepack_type: f1k1f16k4f2k2f1k1_g20
+  camera_in_dim: 6
+  use_gradient_checkpointing: true
+  use_selective_checkpointing: false  # SAC: recompute cheap ops, save attn/mm (manual-AC only)
+  compile_blocks: true            # regional torch.compile of DiT blocks
+  activation_memory_budget: 0.5   # compile-only SAC budget (0=full AC, 1=default compile)
+  shift: 3.0                      # flow-shift
+  random_drop_rate: 0.1            # random frame dropping rate
+  noise_aug: true                  # history-condition noise augmentation
+  neg_text_embed_path: neg_text_embed.pt
+
+data:
+  data_name: wan_framepack_dl3dv  # wan_framepack_dl3dv (real) / wan_framepack_fake
+  target_path: ${oc.env:DATA_PATH}
+  metadata_path: train_metadata.csv
+  gen_frames: 20
+  load_raymap: true
+  # Training always uses BOTH rendered-warp variants (online_kf5 + offline_kf5)
+  # together; the dataset length is doubled (one sample per entry per variant).
+
+basic:
+  global_batch_size: 64           # used to derive experiment_name
+  micro_batch_size: 1             # per-GPU per-step
+  gradient_accumulation_steps: 4  # global_batch_size = micro * grad_accum * world_size
+  max_steps: 100000
+  grad_clip: 1.0
+  seed: 0
+  num_workers: 4
+
+  optimizer:
+    name: AdamW
+    lr: 3.0e-5
+    weight_decay: 0.1
+    betas: [0.9, 0.999]
+
+  fsdp:
+    mesh_mode: 2d                   # 1d / 2d (HSDP)
+    param_dtype: bfloat16
+
+  logging:
+    i_log: 10
+    i_save: 200
+    tb_subdir: tb_logs

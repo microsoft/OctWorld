@@ -1,0 +1,11 @@
+# Local model downloads and generated runtime artifacts are not release source.
+/model_weights/
+/outputs/
+release/
+
+__pycache__/
+*.py[cod]
+
+
+.conda/
+.vscode/
