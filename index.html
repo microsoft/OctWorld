@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="OctWorld generates long-range, world-consistent videos with octree-based 3D mapping.">
+  <title>OctWorld</title>
+  <link rel="icon" type="image/png" href="logo_fractal_microsoft_front_back_swap_depth2.png">
+  <link rel="stylesheet" href="styles.css?v=28">
+</head>
+<body>
+  <header class="site-header">
+    <a class="wordmark" href="#top" aria-label="OctWorld home">
+      <img class="wordmark-logo" src="logo_fractal_microsoft_front_back_swap_depth2.png" alt="" width="30" height="30">
+      OctWorld
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#overview">Overview</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#abstract">Abstract</a>
+      <a href="#method">Method</a>
+      <a href="#citation">Citation</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="intro" aria-labelledby="page-title">
+      <div class="intro-background" aria-hidden="true">
+        <video class="is-active" muted loop playsinline preload="none"></video>
+        <video muted loop playsinline preload="none"></video>
+      </div>
+      <div class="intro-shade" aria-hidden="true"></div>
+      <div class="intro-content">
+        <p class="eyebrow">Long-range generative world modeling</p>
+        <h1 id="page-title"><span>OctWorld:</span> Long-Range World-Consistent Video Generation with Octree-based 3D Mapping</h1>
+        <div class="author-list" aria-label="Authors">
+          <span>Zelong Lv<sup>1,2,*</sup></span>
+          <span>Sicheng Xu<sup>2</sup></span>
+          <span>Jianfeng Xiang<sup>2,3,*</sup></span>
+          <span>Ruicheng Wang<sup>1,2,*</sup></span>
+          <span>Yue Dong<sup>2</sup></span>
+          <span>Yu Deng<sup>2</sup></span>
+          <span>Guangzhong Sun<sup>1</sup></span>
+          <span>Jiaolong Yang<sup>2,†</sup></span>
+        </div>
+        <p class="affiliations"><sup>1</sup> University of Science and Technology of China &nbsp; <sup>2</sup> Microsoft Research Asia &nbsp; <sup>3</sup> Tsinghua University</p>
+        <div class="paper-links" aria-label="Project resources">
+          <a href="https://arxiv.org/abs/2609.03919" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <path d="M14 2v6h6M8 13h8M8 17h8"></path>
+            </svg>
+            <span>Read Research Paper</span>
+          </a>
+          <a href="#top">
+            <img src="assets/GitHub_Invertocat_White.svg" alt="" width="16" height="16">
+            <span>Code <small>(Coming Soon)</small></span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="overview section-shell" id="overview" aria-labelledby="overview-title">
+      <div class="section-heading">
+        <p class="section-index">01 / Visual overview</p>
+        <h2 id="overview-title">See OctWorld in motion.</h2>
+      </div>
+      <div class="method-grid">
+        <article class="method-card">
+          <div class="method-media">
+            <video muted loop playsinline preload="auto">
+              <source src="assets/method/octmapworkflowillu_v1.mp4?v=crf23-1" type="video/mp4">
+            </video>
+            <div class="media-status" aria-hidden="true"><span></span> OctWorld system workflow</div>
+          </div>
+          <h3>OctMap-Guided Generation with Precise Camera Control</h3>
+          <p>A system-level visualization of the OctWorld generation workflow, showing how data and conditioning signals flow among camera control, RGB-D generation, OctMap memory, and video diffusion components to enable precise control along user-specified camera trajectories.</p>
+        </article>
+        <article class="method-card">
+          <div class="method-media has-controls">
+            <video muted loop playsinline controls preload="auto">
+              <source src="assets/method/Octmap_Visualization_combined.mp4?v=crf22-2" type="video/mp4">
+            </video>
+            <div class="media-status" aria-hidden="true"><span></span> OctMap online integration</div>
+          </div>
+          <h3>Inside OctMap Online Integration</h3>
+          <p>A detailed visualization of the OctMap subsystem, showing how incoming RGB-D observations are unprojected, fused into adaptive octree nodes, and integrated online to update the scene's geometry and appearance throughout generation.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="gallery section-shell" id="gallery" aria-labelledby="gallery-title">
+      <div class="section-heading gallery-heading">
+        <div>
+          <p class="section-index">02 / Gallery</p>
+          <h2 id="gallery-title">Generated journeys, mapped as they unfold.</h2>
+        </div>
+        <p class="gallery-note"><span class="live-dot"></span> Hover to play</p>
+      </div>
+
+      <div class="gallery-groups">
+        <section class="gallery-group" aria-labelledby="dl3dv-title">
+          <div class="gallery-group-heading">
+            <p>01</p>
+            <div class="gallery-group-copy">
+              <h3 id="dl3dv-title">DL3DV trajectories</h3>
+              <p class="gallery-instruction">Click Show 3D Map to view the spatial reconstruction.</p>
+            </div>
+            <span>2 scenes</span>
+          </div>
+          <div class="scene-grid" id="dl3dv-grid"></div>
+        </section>
+
+        <section class="gallery-group" aria-labelledby="real-title">
+          <div class="gallery-group-heading">
+            <p>02</p>
+            <div class="gallery-group-copy">
+              <h3 id="real-title">Customized trajectories / DL3DV images</h3>
+              <p class="gallery-instruction">Click Show 3D Map to view the spatial reconstruction.</p>
+            </div>
+            <span>2 scenes</span>
+          </div>
+          <div class="scene-grid" id="real-grid"></div>
+        </section>
+
+        <section class="gallery-group" aria-labelledby="synthetic-title">
+          <div class="gallery-group-heading">
+            <p>03</p>
+            <div class="gallery-group-copy">
+              <h3 id="synthetic-title">Customized trajectories / Synthetic images</h3>
+              <p class="gallery-instruction">Click Show 3D Map to view the spatial reconstruction.</p>
+            </div>
+            <span>14 scenes</span>
+          </div>
+          <div class="scene-grid" id="synthetic-grid"></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="abstract section-shell" id="abstract" aria-labelledby="abstract-title">
+      <div class="section-heading">
+        <p class="section-index">03 / Abstract</p>
+        <h2 id="abstract-title">Explorable worlds with persistent 3D memory.</h2>
+      </div>
+      <div class="abstract-copy">
+        <p>We present OctWorld, a video diffusion framework with 3D memory for generating explorable, world-consistent, and high-fidelity visual scenes. Given a single image, OctWorld enables stable autoregressive world generation along user-specified camera trajectories.</p>
+        <p>We focus on the problem of <span class="paper-term">long spatial range generation</span>, characterized by long camera path and wide viewing angle coverage, where maintaining spatial consistency, particularly when revisiting previously generated regions, becomes challenging. To address this, we first build upon a pretrained autoregressive video diffusion model that supports longer-horizon context modeling. We adapt this model to RGB-D generation and introduce a depth normalization scheme for inter-chunk consistency.</p>
+        <p>Next, and more importantly, we propose an <span class="paper-term">extensible and spatially-adaptive 3D memory</span>, termed <span class="paper-term">OctMap</span>. OctMap constructs a global 3D representation of the generated scene by progressively fusing the generated RGB-D frames. To accommodate diverse scene scales in the open world setting, it applies adaptive spatial resolution dynamically determined by image evidence with a sparse octree hierarchy, which preserves effective geometric and appearance details while maintaining low memory overhead.</p>
+        <p>Experiments demonstrate that OctWorld can generate long-range and spatially consistent videos, outperforming prior methods on existing benchmarks as well as in longer-range generation cases.</p>
+      </div>
+    </section>
+
+    <section class="method section-shell" id="method" aria-labelledby="method-title">
+      <div class="section-heading">
+        <p class="section-index">04 / Method</p>
+        <h2 id="method-title">A persistent map for worlds that keep unfolding.</h2>
+      </div>
+      <figure class="method-figure">
+        <div class="method-figure-frame">
+          <a href="octworld_method.pdf" target="_blank" rel="noopener" aria-label="Open the OctWorld training pipeline figure as a PDF">
+            <img src="assets/method/octworld_method_web.png" alt="OctWorld training pipeline showing history and target RGB-D frames, OctMap construction, spatial conditioning, and diffusion training." width="4796" height="1617" loading="lazy" decoding="async">
+          </a>
+        </div>
+        <figcaption><strong>Training pipeline of OctWorld.</strong> Given a training RGB-D segment, we split the sequence into history frames and target frames. An OctMap is constructed from the history frames and rendered to the target view as spatial conditions. <span class="math-symbol">ε</span><sub>α</sub> and <span class="math-symbol">ε</span><sub>t</sub> denotes gaussian noises at level <span class="math-symbol">α</span> and <span class="math-symbol">t</span> respectively.</figcaption>
+      </figure>
+    </section>
+
+    <section class="citation section-shell" id="citation" aria-labelledby="citation-title">
+      <div class="section-heading">
+        <p class="section-index">05 / Citation</p>
+        <h2 id="citation-title">Reference OctWorld.</h2>
+      </div>
+      <div class="citation-block">
+        <pre><code>@inproceedings{lv2026octworld,
+  title     = {OctWorld: Long-Range World-Consistent Video Generation
+               with Octree-based 3D Mapping},
+  author    = {Lv, Zelong and Xu, Sicheng and Xiang, Jianfeng and
+               Wang, Ruicheng and Dong, Yue and Deng, Yu and
+               Sun, Guangzhong and Yang, Jiaolong},
+  year      = {2026}
+}</code></pre>
+        <button class="copy-button" type="button" aria-label="Copy BibTeX" title="Copy BibTeX">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="1"></rect><path d="M16 8V5H5v11h3"></path></svg>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>OctWorld</span>
+    <div class="footer-links">
+      <span>Research project · 2026</span>
+      <a href="https://go.microsoft.com/fwlink/?LinkId=521839">Privacy &amp; Cookies</a>
+    </div>
+  </footer>
+
+  <template id="scene-template">
+    <article class="scene-cell">
+      <div class="video-frame">
+        <video muted loop playsinline preload="none"></video>
+        <div class="video-fallback" hidden>Media unavailable</div>
+        <button class="play-toggle" type="button" aria-label="Play paired scene" title="Play paired scene">
+          <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"></path></svg>
+          <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3v14H7zM14 5h3v14h-3z"></path></svg>
+        </button>
+      </div>
+    </article>
+  </template>
+
+  <script src="script.js?v=28"></script>
+</body>
+</html>
