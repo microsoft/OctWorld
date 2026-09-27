@@ -1,0 +1,20 @@
+[
+  {
+    "image": "scenes/scene_00000/image.png",
+    "trajectory": "scenes/scene_00000/trajectory.npz",
+    "anchor_depth": "scenes/scene_00000/anchor_depth.png",
+    "prompt_file": "scenes/scene_00000/prompt.txt"
+  },
+  {
+    "image": "scenes/scene_00001/image.png",
+    "trajectory": "scenes/scene_00001/trajectory.npz",
+    "anchor_depth": "scenes/scene_00001/anchor_depth.png",
+    "prompt_file": "scenes/scene_00001/prompt.txt"
+  },
+  {
+    "image": "scenes/scene_00002/image.png",
+    "trajectory": "scenes/scene_00002/trajectory.npz",
+    "anchor_depth": "scenes/scene_00002/anchor_depth.png",
+    "prompt_file": "scenes/scene_00002/prompt.txt"
+  }
+]

@@ -1,0 +1,5 @@
+# Four camera turns for the Minecraft canyon image.
+orbit_left 1.0 45.0
+pan_right 45.0
+pull_out 1.0
+pan_left 45.0

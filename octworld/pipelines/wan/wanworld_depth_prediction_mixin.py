@@ -1,55 +1,26 @@
-"""Depth-prediction logic for :class:`WanWorldPipeline`, factored into a mixin.
+"""Non-streaming DA3 depth strategies used by :class:`WanWorldPipeline`.
 
-This decouples *what depth backend / strategy is used* from the Wan AR rollout
-in :mod:`octworld.pipelines.wan.wanworld_pipeline`. The pipeline mixes in
-:class:`WanWorldDepthPredictionMixin`, which:
+``align_with_user`` (default) predicts with user-camera hints and
+``align_to_input=True``, with a per-chunk overlap-scale fallback on Umeyama
+degeneracy. ``scale_alignment`` always skips Umeyama and recovers scale from
+overlap. The legacy ``standalone`` method remains defined but is disabled.
 
-- builds + holds the depth predictor (and, for ``standalone``, the streamer),
-- owns the depth-mask policy and the user-trajectory scale state,
-- owns all the shared depth helpers (resize / mask / first-frame predict / …),
-- exposes the per-chunk methods ``predict_depth_standalone`` /
-    ``predict_depth_align_with_user`` / ``predict_depth_scale_alignment`` and
-    binds the active one to
-  ``self.predict_depth_fn`` (selected by ``depth_method``).
+Both supported modes share an initial single-frame prediction without hints.
+The pipeline then selects keyframes from ``[frame0 | gen0]`` (81 candidates)
+or a later 80-frame chunk before calling ``predict_depth_fn``. The mixin never
+updates the map: it returns depth/masks and scaled user cameras (w2c, normalized
+intrinsics); the pipeline owns the mapper and accumulated AR state.
 
-Each ``process_chunk_*`` only **predicts depth + chooses cameras** — it takes
-frames (+ user cameras) and returns depth + the cameras to integrate. The
-pipeline's ``__call__`` owns frame assembly, the trajectory rescale, the 3D
-**mapper** (``_update_map`` / ``_reset_mapper``) and the AR **buffers** — they
-are not touched here. See
-``docs/code_plan/wanworld_depth_prediction_decouple_plan.md``.
-
-``process_chunk_*`` returns a dict with:
-
-- ``depths``          (N, H, W)    — metric depth at mapper resolution.
-- ``masks``           (N, H, W)    — bool depth mask.
-- ``map_extrinsics``  (N, 4, 4)    — cameras to integrate into the map (w2c).
-- ``map_intrinsics``  (N, 3, 3)    — normalized intrinsics for integration.
-
-The pipeline owns frame assembly: on the first chunk it prepends the seed frame
-so depth is predicted over ``[frame0 | gen0]`` (81 frames), resets the mapper,
-and rebuilds the seed buffers; later chunks predict the 80 generated frames and
-append. Both depth methods share this first-chunk handling. The pipeline also
-owns the trajectory rescale: for ``standalone`` it refines ``s_user`` + rebases
-the user trajectory onto DA3's frame-0 from the chunk-0 result.
-
-Three depth methods:
-
-- ``"standalone"`` — DA3 **streaming**; map integrated with DA3-predicted poses.
-- ``"align_with_user"`` — strictly **non-streaming**; map integrated with the
-  **user camera**; the predictor only provides depth (aligned to the user
-  trajectory via ``align_to_input=True``).
-- ``"scale_alignment"`` — DA3 ``predict`` only (no streamer): from chunk 1 on,
-    run one joint predict over ``[prev_overlap_rgb | cur_rgb]`` and use overlap
-    depth to estimate a scalar that aligns the new chunk depth to the previous
-    chunk depth scale.
-
-The first-frame depth path is **shared** by both methods: a single-frame
-``predictor.predict`` (no hint), integrated with the user camera by ``__call__``.
+Returned depth/masks are (N, H, W) at ``mapper_resolution``: this is the
+intermediate masking size, not ``integration_resolution``. Confidence is a
+per-call intermediate plus a debug snapshot, not a parallel history buffer.
+At the default setting, DA3 predicts at 294x504, this mixin resizes depth and
+confidence to 480x832, and the mapper later resizes masked depth to 294x504.
 """
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
@@ -69,6 +40,7 @@ def compute_depth_scale(
     anchor_mask: Optional[torch.Tensor] = None,
     da3_mask: Optional[torch.Tensor] = None,
     max_points: int = 50000,
+    generator: Optional[torch.Generator] = None,
 ) -> float:
     """Estimate scalar ``s`` such that ``s * anchor_depth ≈ da3_depth``.
 
@@ -81,6 +53,7 @@ def compute_depth_scale(
         da3_depth:    (H, W) predicted first-frame depth (metric scale).
         anchor_mask / da3_mask: optional (H, W) bool validity masks.
         max_points:   subsample cap for the fit.
+        generator: optional dedicated stream. None retains legacy global RNG.
     """
     anchor_depth = anchor_depth.float()
     da3_depth = da3_depth.float()
@@ -102,7 +75,10 @@ def compute_depth_scale(
             "and its validity mask."
         )
     if src.numel() > max_points:
-        idx = torch.randperm(src.numel(), device=src.device)[:max_points]
+        # Draw on the generator's device, then move indices (never draw CPU
+        # indices from a CUDA generator or silently fall back to global RNG).
+        rand_device = src.device if generator is None else generator.device
+        idx = torch.randperm(src.numel(), device=rand_device, generator=generator)[:max_points].to(src.device)
         src, tgt = src[idx], tgt[idx]
     w = 1.0 / tgt.clamp_min(1e-3)
     # Weighted-L1 scale fit (trunc=None branch) from World-vdt align_utils.
@@ -122,6 +98,22 @@ class WanWorldDepthPredictionMixin:
     # ------------------------------------------------------------------
     # Backend construction / reset
     # ------------------------------------------------------------------
+
+    def _auxiliary_random_scope(self, operation: str):
+        streams = getattr(self, "_case_random_streams", None)
+        namespace = getattr(self, "_random_namespace", "inference")
+        return nullcontext() if streams is None else streams.scope(f"{namespace}.{operation}")
+
+    def _scale_random_generator(self):
+        streams = getattr(self, "_case_random_streams", None)
+        namespace = getattr(self, "_random_namespace", "inference")
+        return None if streams is None else streams.generator(f"{namespace}.scale")
+
+    def _predict_depth_seeded(self, *args, **kwargs):
+        # DA3 performs torch.randint sky quantile subsampling internally and
+        # may use global RNG in geometric helpers. Do not edit its submodule.
+        with self._auxiliary_random_scope("depth"):
+            return self._depth_predictor.predict(*args, **kwargs)
 
     @staticmethod
     def _validate_depth_config(cfg) -> tuple[str, str]:
@@ -152,29 +144,24 @@ class WanWorldDepthPredictionMixin:
         return depth_method, depth_predictor_name
 
     def _init_depth_backend(self, cfg, device: str):
-        """Build the depth predictor (+ streamer for ``standalone``), cache the
-        depth-mask policy + trajectory-scale state, and bind the active
-        per-chunk method to ``self.predict_depth_fn``. Validates ``depth_method``
-        / ``depth_predictor_name`` combinations.
-        """
-        from depth_prediction.predictors import create_predictor, DepthStreaming
+        """Validate, build one non-streaming predictor, and bind the depth method.
 
+        Keep ``_depth_streamer=None`` for the existing reset/state interface;
+        neither supported mode imports or constructs the legacy streamer.
+        """
         self.depth_method, self.depth_predictor_name = self._validate_depth_config(cfg)
+        from depth_prediction.predictors import create_predictor
+
         predict_depth_fns = {
             "standalone": self.predict_depth_standalone,
             "align_with_user": self.predict_depth_align_with_user,
             "scale_alignment": self.predict_depth_scale_alignment,
         }
 
-        # One predictor instance, shared by the (optional) streamer.
+        # Both supported modes share one predictor and do not use a streamer.
         self._depth_predictor = create_predictor(
             self.depth_predictor_name, device=device)
-        # The streamer is only used by ``standalone``; ``align_with_user`` is
-        # strictly non-streaming and must never touch a streamer.
-        self._depth_streamer = (
-            DepthStreaming(self._depth_predictor)
-            if self.depth_method == "standalone" else None
-        )
+        self._depth_streamer = None
 
         # Depth-mask policy (mirrors datapipe/wan_pipes/octmap_integration.py).
         self.conf_percentile = float(cfg.conf_percentile)
@@ -231,7 +218,7 @@ class WanWorldDepthPredictionMixin:
         chunk_intrs: torch.Tensor,
         chunk_idx: int,
     ) -> Dict[str, Any]:
-        """DA3 **streaming** depth; map integrated with DA3's predicted poses.
+        """Disabled legacy DA3 streaming method, retained for compatibility.
 
         On chunk 0 the pipeline passes the 81-frame ``[frame0 | gen0]`` stack;
         we reset the streamer and predict with ``overlap=0`` (the bootstrap).
@@ -268,8 +255,8 @@ class WanWorldDepthPredictionMixin:
         *provides depth* aligned to the user trajectory (depth in the
         user-camera metric scale). The map is integrated with the **user
         camera**; the predictor's returned poses are not used. On chunk 0 the
-        pipeline passes the 81-frame ``[frame0 | gen0]`` stack (and matching user
-        cameras).
+        pipeline passes frames selected from ``[frame0 | gen0]`` (81 candidate
+        frames) and their matching user cameras.
 
         Fallback: ``align_to_input`` runs an Umeyama Sim(3) fit
         (``align_poses_umeyama``) that raises ``evo``'s ``GeometryException``
@@ -524,6 +511,7 @@ class WanWorldDepthPredictionMixin:
         trajectory (derived from the unscaled rebased trajectory)."""
         self._s_user = compute_depth_scale(
             anchor_depth, da3_depth0, anchor_mask=anchor_mask, da3_mask=da3_mask0,
+            generator=self._scale_random_generator(),
         )
         if da3_ext0 is not None:
             self._da3_ext0 = da3_ext0.detach().cpu().float()
@@ -537,7 +525,11 @@ class WanWorldDepthPredictionMixin:
     # ------------------------------------------------------------------
 
     def _nearest_resize_to_mapper(self, arr_nhw: torch.Tensor) -> torch.Tensor:
-        """Nearest-resize a (N, h, w) float tensor to the mapper resolution."""
+        """Resize to the pipeline's intermediate masking/render resolution.
+
+        This does not select the mapper's integration resolution. The method
+        name is retained for compatibility with the existing pipeline.
+        """
         import cv2
 
         H, W = self.mapper_resolution
@@ -667,7 +659,7 @@ class WanWorldDepthPredictionMixin:
         Returns ``(depth0, mask0)`` at the mapper resolution.
         """
         chw = image_hw3.permute(2, 0, 1).unsqueeze(0).float()  # (1,3,H,W)
-        out = self._depth_predictor.predict(chw)
+        out = self._predict_depth_seeded(chw)
         depth, mask = self._da3_depth_and_mask(out, image_hw3.unsqueeze(0))
         return depth[0], mask[0]
 
@@ -689,7 +681,7 @@ class WanWorldDepthPredictionMixin:
         trajectory.
         """
         imgs = self._frames_to_chw(gen_frames)
-        out = self._depth_predictor.predict(
+        out = self._predict_depth_seeded(
             imgs,
             hint_extrinsics=chunk_extrs.to(self.device),
             hint_intrinsics=chunk_intrs.to(self.device),
@@ -712,7 +704,7 @@ class WanWorldDepthPredictionMixin:
         unstable Umeyama Sim(3) fit entirely.
         """
         imgs = self._frames_to_chw(gen_frames)
-        out = self._depth_predictor.predict(
+        out = self._predict_depth_seeded(
             imgs,
             hint_extrinsics=chunk_extrs.to(self.device),
             hint_intrinsics=chunk_intrs.to(self.device),
@@ -780,6 +772,7 @@ class WanWorldDepthPredictionMixin:
                 pred_flat,
                 anchor_mask=ref_mask_flat,
                 da3_mask=pred_mask_flat,
+                generator=self._scale_random_generator(),
             )
         except ValueError:
-            return compute_depth_scale(ref_flat, pred_flat)
+            return compute_depth_scale(ref_flat, pred_flat, generator=self._scale_random_generator())

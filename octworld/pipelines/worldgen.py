@@ -229,7 +229,7 @@ class WorldGenPipeline:
     def _save_warp_vis(
         self, save_dir, tag: str,
         warp_color: torch.Tensor, warp_depth: torch.Tensor, warp_mask: torch.Tensor,
-        fps: int = 8,
+        fps: int = 15,
     ):
         """Write a warp (color | colorized depth) visualization video."""
         if save_dir is None:
@@ -242,7 +242,7 @@ class WorldGenPipeline:
         warp_vis = np.concatenate([warp_color_vis, warp_depth_vis], axis=2)
         write_video(str(save_dir / f"{tag}_warp.mp4"), warp_vis, fps=fps)
 
-    def _save_accumulated_vis(self, save_dir, tag: str, fps: int = 8):
+    def _save_accumulated_vis(self, save_dir, tag: str, fps: int = 15):
         """Write the accumulated (color | colorized depth) visualization."""
         if save_dir is None:
             return
@@ -444,13 +444,13 @@ class WorldGenPipeline:
         if save_dir is not None:
             final_color_vis = post_process_video_for_visualize(
                 self.all_frames, layout='fhw3', value_range=(0, 1))
-            write_video(str(save_dir / "output.mp4"), final_color_vis, fps=8)
+            write_video(str(save_dir / "output.mp4"), final_color_vis, fps=15)
 
             final_depths_np = self.all_depths.cpu().numpy() if isinstance(self.all_depths, torch.Tensor) else self.all_depths
             final_mask_np = self.all_masks.cpu().numpy() if self.all_masks is not None else None
             write_colored_depth_video(
                 str(save_dir / "output_depth.mp4"),
-                final_depths_np, mask=final_mask_np, fps=8)
+                final_depths_np, mask=final_mask_np, fps=15)
             write_video_depth(
                 str(save_dir / "output_depth.zip"),
                 final_depths_np, mask=final_mask_np)

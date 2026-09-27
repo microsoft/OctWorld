@@ -1,32 +1,22 @@
 """WanWorldPipeline — AR world generation with the Wan 14B FramePack backbone.
 
-Mirrors :class:`FramePackWorldPipeline` but drives ``WanMultiAdapterPipeline``
-(Wan 14B FramePack) and obtains metric depth from a DA3 backend instead of a
-depth-generating diffusion model.
-
-Design (see docs/code_plan/wanworld_depth_align_fix.md):
-  - Input requires an **anchor depth** for the first frame (``anchor_depth``).
-    It defines the metric scale of the user camera trajectory.
-  - **Scale-only alignment.** Both the user trajectory and DA3's predicted
-    trajectory are rebased to the frame-0 origin, so they differ only by a
-    single scale. After the DA3 single-frame prediction (frame 0) and again
-    after the first-chunk bootstrap (81-frame re-prediction), we estimate a
-    scalar ``s_user`` such that ``s_user * anchor_depth ≈ da3_depth0`` and
-    scale the **user trajectory translations** by ``s_user`` to match DA3's
-    metric scale. After the first chunk the user trajectory is frozen.
-    - **Depth aligned to user cameras.** DA3 receives the user trajectory as a
-        camera hint and supplies metric depth; OctMap integrates that depth with
-        the user-camera poses.
-    - **Render uses the user trajectory** for both the warp render and the
-        conditioning raymap.
-  - Overrides ``__call__`` (the rollout diverges from the base loop) while
-    reusing the base ``WorldGenPipeline`` infrastructure helpers.
+Default inference uses non-streaming DA3 ``align_with_user`` and online OctMap:
+    - Rebase the user trajectory to frame 0. Fit ``s_user * anchor_depth ≈
+        da3_depth0`` from a single-frame DA3 prediction, then scale only the user
+        translations. The supported modes do not refine this scale on chunk 0.
+    - Select keyframes before per-chunk depth prediction. DA3 receives the scaled
+        user cameras as hints; the map uses those cameras, not DA3-predicted poses.
+        Degenerate Umeyama alignment falls back to overlap scale alignment for that
+        chunk. ``standalone`` is retained as legacy code but disabled at startup.
+    - Integrate at 294x504 and render at 480x832 (H, W). DA3's process_res=504 and
+        patch14 resizing produce 294x504 for 480x832 RGB. Depth/confidence first
+        return to 480x832 for masking, then the mapper resizes depth for integration.
+    - Warp rendering uses the scaled user trajectory; the raymap uses its
+        stride-4 cameras, rebased to the current chunk's first camera.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -40,13 +30,11 @@ from .wan_pipeline import WanMultiAdapterPipeline
 from .wanworld_depth_prediction_mixin import (
     WanWorldDepthPredictionMixin, compute_depth_scale,
 )
+from .wanworld_output_mixin import WanWorldOutputMixin
 from ...diffusion.scheduler import FlowMatchScheduler
 from ...models.wan_checkpoint import load_wan_checkpoint, resolve_exp_root
 from utils.camera import get_plucker_ray, transpose_to_first_frames
-from utils.io import (
-    post_process_video_for_visualize, colorize_depth, write_video,
-    write_video_depth,
-)
+from utils.random_state import CaseRandomStreams, seed_everything
 
 # ``compute_depth_scale`` is re-exported from the depth mixin for backward
 # compatibility (e.g. validate/wanworld_traj_render_check.py imports it here).
@@ -70,9 +58,18 @@ CHUNK_VIDEO_FRAMES = 80  # pixel frames per chunk (= GEN_FRAMES * 4)
 
 @dataclass
 class WanWorldPipeConfig:
-    """Runtime config for WanWorldPipeline (excluding model/checkpoint paths)."""
+    """Inference settings; dimensions are (H, W), not width/height.
+
+    Defaults preserve the evaluated online/noise0 configuration. Model package
+    architecture settings do not override these runtime values. No GPU/model
+    availability is implied by constructing this dataclass.
+    """
 
     device: str = "cuda"
+    # Strict checkpoint loading replaces initialized parameters. Still seed
+    # construction for buffers/third-party initialization and repeatable setup.
+    # The example sets this to --seed; library callers can set it explicitly.
+    init_seed: int = 0
     torch_dtype: torch.dtype = torch.bfloat16
     num_inference_steps: int = 35
     cfg_scale: float = 5.0
@@ -80,45 +77,54 @@ class WanWorldPipeConfig:
     cpu_offload: bool = False
     shift: float = 3.0
     mapper_mode: str = "octmap"
+    # RGB/warp render size and intermediate depth/confidence masking size;
+    # this is NOT the DA3 prediction size or the OctMap integration size.
     mapper_resolution: tuple[int, int] = (480, 832)
     conf_percentile: float = 20.0
     apply_sky_mask: bool = True
     sky_threshold: int = 32
     neg_text_embed_path: Optional[str] = None
-    # Fixed history-condition noise-augmentation bucket level for inference
-    # (0..10). The finalized evaluation setting uses clean history (level 0).
+    # History AND rendered-latent augmentation bucket (0..10). Both 0 and None
+    # keep conditions clean, with history_timestep=None; no extra noise is drawn.
     noise_aug_level: Optional[int] = 0
-    # Depth backend selection (see wanworld_depth_mixin.WanWorldDepthMixin):
-    #   - "standalone":      DA3 streaming, map uses DA3-predicted poses.
+    # Depth backend selection (WanWorldDepthPredictionMixin):
+    #   - "standalone":      legacy DA3 streaming; rejected before model loading.
     #   - "align_with_user": non-streaming, map uses the user camera; the
     #                         predictor only provides depth aligned to it.
     #   - "scale_alignment": non-streaming DA3 predict with overlap-based
     #                         chunk-to-chunk depth scale transfer.
     depth_method: str = "align_with_user"
     depth_predictor_name: str = "da3"
-    # Integrate at DA3 native resolution and render at mapper_resolution.
+    # Fixed evaluated integration size, matching DA3 output for 480x832 RGB
+    # with process_res=504 / upper_bound_resize / patch14; NOT inferred at runtime.
+    # None integrates at mapper_resolution. For tsdf, explicitly set None.
     integration_resolution: Optional[tuple[int, int]] = (294, 504)
     # Online incrementally integrates each new chunk. Offline re-integrates all
     # cached frames after every chunk and is retained as an explicit override.
     offline_integration: bool = False
     octree_depth_strategy: str = "pixel_size_to_volume_size"
+    # Used only by the "bigger_voxels" carve strategy.
     bigger_voxel_pixel_size_scale: float = 2.0
+    # Used only by uniform selection; keyframe selection ignores this value.
     sample_ratio: int = 1
     # Frame selection for depth prediction / map integration:
     #   - "uniform":  keep every ``sample_ratio``-th frame (stride sampling).
     #   - "keyframe": RAFT-Large motion-gated keyframe selection (stateful
     #                 across chunks); see utils.keyframe.RaftKeyframeSelector.
     frame_select_method: str = "keyframe"
+    # Mean flow in preprocessed RAFT pixels (480x832 at the default RGB size).
     keyframe_thresh: float = 5.0
+    # Skipped-frame counter threshold, checked before increment: 8 can yield
+    # a 9-frame index gap. Every selection block also keeps its last frame.
     keyframe_max_interval: int = 8
 
 
-class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
+class WanWorldPipeline(WanWorldOutputMixin, WanWorldDepthPredictionMixin, WorldGenPipeline):
     """AR world generation pipeline using the Wan 14B FramePack backbone.
 
     Composes a :class:`WanMultiAdapterPipeline` as ``self.world_generator`` and
-    drives depth prediction via :class:`WanWorldDepthPredictionMixin` (DA3
-    ``standalone`` streaming or ``align_with_user`` non-streaming). The depth
+    drives non-streaming DA3 via :class:`WanWorldDepthPredictionMixin`
+    (``align_with_user`` by default, or ``scale_alignment``). The depth
     strategy only predicts depth + chooses cameras; this pipeline owns the 3D
     mapper integration and the AR buffers (see ``__call__``).
     """
@@ -132,6 +138,9 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
     ):
         cfg = config or WanWorldPipeConfig()
         self._validate_depth_config(cfg)
+        self._seed_everything(cfg.init_seed)
+        self._initialization_seed = int(cfg.init_seed)
+        torch.backends.cudnn.benchmark = False
         device = cfg.device
         torch_dtype = cfg.torch_dtype
         neg_text_embed_path = cfg.neg_text_embed_path
@@ -237,10 +246,9 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
         )
         self.integration_resolution = integration_resolution
 
-        # ── 3. Depth backend (predictor + optional streamer) ────────────
-        # Construction, mask policy, and trajectory-scale state all live in
-        # WanWorldDepthMixin; ``standalone`` builds a DA3 streamer, while
-        # ``align_with_user`` / ``scale_alignment`` are non-streaming.
+        # ── 3. Depth backend (non-streaming predictor) ──────────────────
+        # Construction, masks, and scale state live in the depth mixin.
+        # Both supported modes are non-streaming; standalone is disabled.
         self._init_depth_backend(cfg, device)
 
         # ── 4. Sampling config ──────────────────────────────────────────
@@ -275,6 +283,7 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
             "integration_config": IntegrationConfig(
                 carve_octree_depth_strategy=cfg.octree_depth_strategy,
                 carve_bigger_voxel_pixel_size_scale=cfg.bigger_voxel_pixel_size_scale,
+                integration_mode="offline" if cfg.offline_integration else "online",
             )
         }
 
@@ -295,15 +304,18 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
         The selector is stateful across chunks (reference frame + interval
         counter carry over); it is reset per rollout in ``__call__``.
         """
-        if self._keyframe_selector is None:
-            from utils.keyframe import RaftKeyframeSelector
+        # RAFT creates random parameters on its first select before loading
+        # trained weights. First-use vs cached execution must not shift DA3 RNG.
+        with self._auxiliary_random_scope("keyframe"):
+            if self._keyframe_selector is None:
+                from utils.keyframe import RaftKeyframeSelector
 
-            self._keyframe_selector = RaftKeyframeSelector(
-                threshold=self.keyframe_thresh,
-                max_interval=self.keyframe_max_interval,
-                device=str(self.device),
-            )
-        return self._keyframe_selector.select(frames)
+                self._keyframe_selector = RaftKeyframeSelector(
+                    threshold=self.keyframe_thresh,
+                    max_interval=self.keyframe_max_interval,
+                    device=str(self.device),
+                )
+            return self._keyframe_selector.select(frames)
 
     def _select_sampled_inputs(
         self,
@@ -321,15 +333,6 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
             chunk_intrs.index_select(0, sample_idx),
             sample_idx,
         )
-
-    @staticmethod
-    def _slice_result_by_indices(res: Dict[str, Any], sample_idx: torch.Tensor) -> Dict[str, Any]:
-        sliced = dict(res)
-        for key in ("depths", "masks", "map_extrinsics", "map_intrinsics", "conf_mask", "sky_mask", "confidence"):
-            value = sliced.get(key)
-            if isinstance(value, torch.Tensor) and value.ndim >= 1 and value.shape[0] >= sample_idx.shape[0]:
-                sliced[key] = value.index_select(0, sample_idx.to(value.device))
-        return sliced
 
     # ------------------------------------------------------------------
     # Generator construction (compatibility wrappers for the shared loader)
@@ -354,117 +357,6 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
     def _reset_mapper(self):
         self._mapper = None
         self._init_mapper()
-
-    def _save_warp_vis(
-        self,
-        save_dir,
-        tag: str,
-        warp_color: torch.Tensor,
-        warp_depth: torch.Tensor,
-        warp_mask: torch.Tensor,
-        fps: int = 8,
-    ):
-        """Persist warp RGB/depth visualizations as separate files.
-
-        Keeps save paths robust when downstream depth buffers are sampled with a
-        different frame rate than RGB buffers.
-        """
-        if save_dir is None:
-            return
-        save_dir = Path(save_dir)
-        save_dir.mkdir(parents=True, exist_ok=True)
-
-        warp_color_vis = post_process_video_for_visualize(
-            warp_color, layout="fchw", value_range=(0, 1)
-        )
-        warp_depth_vis = colorize_depth(
-            warp_depth.squeeze(1).cpu().numpy(),
-            mask=warp_mask.squeeze(1).cpu().numpy() > 0.5,
-        )
-        write_video(str(save_dir / f"{tag}_warp_rgb.mp4"), warp_color_vis, fps=fps)
-        write_video(str(save_dir / f"{tag}_warp_depth.mp4"), warp_depth_vis, fps=fps)
-
-    def _save_accumulated_vis(self, save_dir, tag: str, fps: int = 8):
-        """Persist accumulated RGB/depth visualizations as separate files.
-
-        ``self.all_frames`` and ``self.all_depths`` can have different lengths
-        when ``sample_ratio > 1``. Saving them independently avoids shape
-        assumptions while preserving both debugging streams.
-        """
-        if save_dir is None:
-            return
-        save_dir = Path(save_dir)
-        save_dir.mkdir(parents=True, exist_ok=True)
-
-        acc_color_vis = post_process_video_for_visualize(
-            self.all_frames, layout="fhw3", value_range=(0, 1)
-        )
-        write_video(str(save_dir / f"{tag}_accumulated_rgb.mp4"), acc_color_vis, fps=fps)
-
-        if self.all_depths is None:
-            return
-        acc_depth = (
-            self.all_depths.cpu().numpy()
-            if isinstance(self.all_depths, torch.Tensor)
-            else np.asarray(self.all_depths)
-        )
-        acc_mask = (
-            self.all_masks.cpu().numpy()
-            if isinstance(self.all_masks, torch.Tensor)
-            else (np.asarray(self.all_masks) if self.all_masks is not None else None)
-        )
-        acc_depth_vis = colorize_depth(acc_depth, mask=acc_mask)
-        write_video(str(save_dir / f"{tag}_accumulated_depth.mp4"), acc_depth_vis, fps=fps)
-
-    # ------------------------------------------------------------------
-    # Per-chunk depth-mask debug dump (predicted depth + separate masks)
-    # ------------------------------------------------------------------
-
-    def _save_chunk_mask_debug(
-        self, save_dir, tag: str, res: Dict[str, Any], fps: int = 8,
-    ):
-        """Persist the chunk's predicted depth + the SEPARATE confidence / sky
-        masks (and the combined mask) for debugging the depth masking.
-
-        Writes into ``<save_dir>/mask_debug/``:
-          - ``{tag}_depth_pred.zip``   per-frame 16-bit depth (actual values).
-          - ``{tag}_depth_pred.mp4``   colorized depth (masked by final mask).
-          - ``{tag}_conf_mask.mp4``    B/W: white = kept by confidence threshold.
-          - ``{tag}_sky_mask.mp4``     B/W: white = non-sky (kept).
-          - ``{tag}_final_mask.mp4``   B/W: white = kept by the combined mask.
-        """
-        if save_dir is None:
-            return
-        debug_dir = Path(save_dir) / "mask_debug"
-        debug_dir.mkdir(parents=True, exist_ok=True)
-
-        def _np(x):
-            return (
-                x.detach().cpu().numpy() if isinstance(x, torch.Tensor)
-                else np.asarray(x)
-            )
-
-        def _bw(mask) -> np.ndarray:
-            m = (_np(mask).astype(bool).astype(np.uint8)) * 255
-            return np.repeat(m[..., None], 3, axis=-1)
-
-        depth = _np(res["depths"]).astype(np.float32)           # (N, H, W)
-        final_mask = _np(res["masks"]).astype(bool)             # (N, H, W)
-        conf_mask = res.get("conf_mask")
-        sky_mask = res.get("sky_mask")
-
-        # Actual predicted depth values (16-bit per-frame PNGs in a zip).
-        write_video_depth(str(debug_dir / f"{tag}_depth_pred.zip"), depth)
-        # Colorized depth (masked) for a quick visual.
-        depth_vis = colorize_depth(depth, mask=final_mask)
-        write_video(str(debug_dir / f"{tag}_depth_pred.mp4"), depth_vis, fps=fps)
-        # Separate + combined masks as black/white videos.
-        if conf_mask is not None:
-            write_video(str(debug_dir / f"{tag}_conf_mask.mp4"), _bw(conf_mask), fps=fps)
-        if sky_mask is not None:
-            write_video(str(debug_dir / f"{tag}_sky_mask.mp4"), _bw(sky_mask), fps=fps)
-        write_video(str(debug_dir / f"{tag}_final_mask.mp4"), _bw(final_mask), fps=fps)
-
 
     # ------------------------------------------------------------------
     # History latents (anchor + 19), mirroring WanFramePackDataset
@@ -595,7 +487,10 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
         """Run one Wan diffusion chunk; returns generated RGB + sampled latents.
 
         Depth / camera (for the map update) are handled by ``__call__`` via the
-        DA3 streamer, so this only produces RGB.
+        selected non-streaming DA3 method, so this only produces RGB.
+        ``noise_snapshot_dir`` is the run output directory, initialized by
+        ``_begin_output_run``. Actual noise/conditions are hashed immediately
+        before latent_sampling; the JSON is not a reconstruction of the RNG.
         """
         device, dtype = self.device, self.torch_dtype
         H, W = self.mapper_resolution
@@ -628,23 +523,13 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
         noise_shape = (1, 16, GEN_FRAMES, H_lat, W_lat)
         if sampling_generator is None:
             raise ValueError("sampling_generator must be initialized by __call__")
+        # Historical v2 demo contract: one continuous CPU FP32 stream per case,
+        # then cast to the model dtype/device. Do not draw directly in BF16 or
+        # reseed per chunk; either would change the recorded latent-noise hashes.
         noise = self.world_generator.generate_noise(
             noise_shape, generator=sampling_generator,
+            rand_device="cpu", rand_torch_dtype=torch.float32,
             device=device, torch_dtype=dtype)
-        noise_snapshot = {
-            "sampling_step": int(chunk_idx),
-            "sampling_step_kind": "ar_chunk",
-            "base_seed": int(case_seed),
-            "sampling": {
-                "generator": "torch.Generator",
-                "stream_seed": int(case_seed),
-                "generator_device": str(sampling_generator.device),
-                "shape": list(noise_shape),
-                "dtype": str(noise.dtype),
-                "sha256": self._tensor_sha256(noise),
-            },
-            "noise_augmentation": {"enabled": False},
-        }
 
         # ── CFG sampling (merged: pos/neg in one batched forward) ───────
         raymap = raymap.to(device=device, dtype=dtype)
@@ -661,12 +546,12 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
         # ``prenoised_history=True`` so ``model_fn`` uses the condition as-is.
         history_d = history.to(device=device, dtype=dtype)
         rendered_d = rendered_rgb_lat.to(device=device, dtype=dtype)
+        history_noise = rendered_noise = None
         if self.noise_aug_level is not None and int(self.noise_aug_level) > 0:
             if augmentation_generator is None:
                 raise ValueError(
                     "augmentation_generator must be initialized by __call__")
-            (history_cond, rendered_cond, history_ts,
-             history_noise, rendered_noise) = (
+            history_cond, rendered_cond, history_ts, history_noise, rendered_noise = (
                 WanMultiAdapterPipeline.apply_history_noise_aug(
                     history_d, rendered_d, self.noise_aug_level,
                     getattr(self.world_generator.scheduler,
@@ -675,21 +560,8 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
                     return_noises=True,
                 )
             )
-            noise_snapshot["noise_augmentation"] = {
-                "enabled": True,
-                "level": int(self.noise_aug_level),
-                "generator": "torch.Generator",
-                "stream_seed": int(case_seed) + 1,
-                "generator_device": str(augmentation_generator.device),
-                "history_sha256": self._tensor_sha256(history_noise),
-                "rendered_sha256": self._tensor_sha256(rendered_noise),
-            }
         else:
             history_cond, rendered_cond, history_ts = history_d, rendered_d, None
-
-        if noise_snapshot_dir is not None:
-            self._save_noise_snapshot(
-                noise_snapshot_dir, chunk_idx, noise_snapshot)
 
         # Merged CFG batches the positive/negative conditioning along the batch
         # dim so a single forward yields both predictions. It trades VRAM
@@ -728,6 +600,13 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
 
         self.world_generator.scheduler.set_timesteps(
             num_inference_steps=self.num_inference_steps, shift=self.shift)
+        # Capture THESE tensors, then pass the same noise object to sampling.
+        # Hashing/serialization does not advance either dedicated RNG stream.
+        self._record_sampling_snapshot(
+            noise_snapshot_dir, chunk_idx, case_seed, noise, sampling_generator,
+            augmentation_generator, history_noise, rendered_noise,
+            input_shared, input_pos["raymap"],
+        )
         sampled = self.world_generator.latent_sampling(
             noise, cfg_scale=self.cfg_scale, cfg_merged=use_merged,
             input_shared=input_shared, input_pos=input_pos, input_neg=input_neg,
@@ -749,30 +628,7 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
     @staticmethod
     def _seed_everything(seed: int) -> None:
         """Fix all RNG seeds (torch / torch.cuda / numpy / random) for a case."""
-        import random
-
-        seed = int(seed)
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
-
-    @staticmethod
-    def _tensor_sha256(tensor: torch.Tensor) -> str:
-        raw = tensor.detach().contiguous().view(torch.uint8).cpu().numpy().tobytes()
-        return hashlib.sha256(raw).hexdigest()
-
-    @staticmethod
-    def _save_noise_snapshot(
-        snapshot_dir: Path, sampling_step: int, snapshot: Dict[str, Any],
-    ) -> Path:
-        snapshot_dir = Path(snapshot_dir)
-        snapshot_dir.mkdir(parents=True, exist_ok=True)
-        snapshot_path = snapshot_dir / f"sampling_step_{sampling_step:04d}.json"
-        with snapshot_path.open("w") as f:
-            json.dump(snapshot, f, indent=2)
-        return snapshot_path
+        seed_everything(seed)
 
     @torch.inference_mode()
     def __call__(
@@ -801,17 +657,29 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
                 are scaled so this matches DA3's predicted frame-0 depth.
             anchor_mask: optional (H, W) bool validity mask for ``anchor_depth``.
             prompt: str or list[str] (per-chunk).
-            save_dir: optional dir for per-chunk + final videos.
+            save_dir: empty output directory. While running, chunks/ holds each
+                chunk's output/depth/warp MP4s. Success leaves three final MP4s
+                and sha256.json with actual per-chunk sampling-input hashes.
             preview_only: if True, only render the warp along the whole
                 trajectory (no diffusion) and return.
             max_chunks: if set, cap the rollout to this many chunks (debug).
             seed: RNG seed fixed across ``torch`` / ``torch.cuda`` / ``numpy`` /
                 ``random`` before running this case, for reproducibility.
+
+        Returns CPU RGB/depth/masks in full frame order. Returned cameras retain
+        the existing keyframe/map indexing; dense export buffers never replace
+        ``all_depths`` / ``all_masks`` or the overlap cache used by AR.
+        As in the historical rollout, a final chunk after chunk 0 skips depth
+        prediction and integration: its output depth is zero with an all-false
+        mask (black in depth.mp4). A one-chunk run retains the bootstrap.
         """
         from tqdm import tqdm
 
         # ── Fix all RNG seeds for this case (reproducible generation) ────
         self._seed_everything(seed)
+        self._case_random_streams = CaseRandomStreams(seed)
+        self._random_namespace = "inference"
+        # Keep these two legacy streams byte-compatible with old noise records.
         sampling_generator = torch.Generator(device="cpu").manual_seed(int(seed))
         augmentation_generator = None
         if self.noise_aug_level is not None and int(self.noise_aug_level) > 0:
@@ -833,19 +701,20 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
         num_chunks = (num_frames - 1) // self.chunk_size
         if max_chunks is not None:
             num_chunks = min(num_chunks, int(max_chunks))
+        if num_chunks < 1:
+            raise ValueError("At least one chunk is required")
 
         if isinstance(prompt, list):
             chunk_prompts = (prompt + [prompt[-1]] * num_chunks)[:num_chunks]
         else:
             chunk_prompts = [prompt] * num_chunks
 
-        if save_dir is not None:
-            save_dir = Path(save_dir)
-            save_dir.mkdir(parents=True, exist_ok=True)
+        self._begin_output_run(save_dir, seed, num_chunks, preview=preview_only)
 
         # ── Reset AR + depth state ──────────────────────────────────────
         self.all_frames = self.all_depths = self.all_masks = None
         self.all_extrinsics = self.all_intrinsics = None
+        self._output_depths = self._output_masks = None
         self._reset_depth_state()
         self._reset_mapper()
         if self._keyframe_selector is not None:
@@ -892,9 +761,12 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
         # ── Preview mode: render whole trajectory, no diffusion ─────────
         if preview_only:
             warp = self._render_chunk_warp(extrinsics[1:], intrinsics[1:])
-            if save_dir is not None:
-                self._save_warp_vis(
-                    save_dir, "preview", warp["color"], warp["depth"], warp["mask"])
+            preview_frames = warp["color"].permute(0, 2, 3, 1)
+            preview_depths = warp["depth"].squeeze(1)
+            preview_masks = warp["mask"].squeeze(1) > 0.5
+            self._save_chunk_warp(save_dir, 0, warp["color"], warp["mask"])
+            self._save_chunk_outputs(save_dir, 0, preview_frames, preview_depths, preview_masks)
+            self._finalize_outputs(save_dir, preview_frames, preview_depths, preview_masks)
             return {"preview": warp}
 
         # ── AR rollout ──────────────────────────────────────────────────
@@ -906,11 +778,16 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
             chunk_start = 1 + self.chunk_size * c
             chunk_extrs = extrinsics[chunk_start:chunk_start + self.chunk_size]
             chunk_intrs = intrinsics[chunk_start:chunk_start + self.chunk_size]
+            skip_depth = c > 0 and c == num_chunks - 1
 
             # 1. render warp (scaled USER cameras)
             warp = self._render_chunk_warp(chunk_extrs, chunk_intrs)
-            self._save_warp_vis(
-                save_dir, f"chunk_{c:02d}", warp["color"], warp["depth"], warp["mask"])
+            # Persist before diffusion so the live chunk exposes its condition.
+            # Prepend only the first anchor for frame-aligned final videos.
+            self._save_chunk_warp(
+                save_dir, c, warp["color"], warp["mask"],
+                anchor_frame=image_np if c == 0 else None,
+            )
 
             # 2. diffuse (Wan) — raymap uses the same (scaled) user cameras
             if torch.cuda.is_available():
@@ -918,13 +795,13 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
             gen = self.world_gen_step(
                 warp["color"], warp["depth"], warp["mask"], chunk_prompts[c],
                 chunk_extrs=chunk_extrs, chunk_intrs=chunk_intrs, chunk_idx=c,
-                case_seed=seed,
+                case_seed=seed, noise_snapshot_dir=save_dir,
                 sampling_generator=sampling_generator,
                 augmentation_generator=augmentation_generator,
-                noise_snapshot_dir=(save_dir / "noise_sha256" if save_dir else None),
             )
-            gen_frames = gen["frames"]    # (80,H,W,3)
+            gen_frames = gen["frames"].detach().cpu()    # (80,H,W,3)
             sampled = gen["latents"]      # (1,16,20,H',W')
+            del gen, warp
 
             # 3. Depth prediction + map integration + AR buffers. The first chunk
             #    rebuilds the map/buffers from the 81-frame ``[frame0 | gen0]``
@@ -964,36 +841,27 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
                 self.all_masks = mask_r.cpu()
                 self.all_extrinsics = map_extrs.detach().cpu().float()
                 self.all_intrinsics = map_intrs.detach().cpu().float()
-                res = self._slice_result_by_indices(res, torch.arange(depth_r.shape[0], dtype=torch.long))
+                output_frames = full_frames
+                output_extrs = extrinsics[:1+self.chunk_size]
+                output_intrs = intrinsics[:1+self.chunk_size]
             else:
-                is_last = (c == num_chunks - 1)
-                if is_last:
-                    # Last chunk: skip depth prediction; fill depth/mask with zeros.
-                    H_map, W_map = self.mapper_resolution
-                    N = gen_frames.shape[0]
-                    depth_r = torch.zeros(N, H_map, W_map, dtype=torch.float32)
-                    mask_r = torch.zeros(N, H_map, W_map, dtype=torch.bool)
+                if skip_depth:
+                    # No later warp consumes this chunk: match the old path,
+                    # including skipping RAFT selection and overlap-cache updates.
+                    depth_r = torch.zeros(gen_frames.shape[:3], dtype=torch.float32)
+                    mask_r = torch.zeros(gen_frames.shape[:3], dtype=torch.bool)
                     map_extrs, map_intrs = chunk_extrs, chunk_intrs
-                    res = {"depths": depth_r, "masks": mask_r,
-                           "map_extrinsics": map_extrs, "map_intrinsics": map_intrs}
                 else:
                     pred_frames, pred_extrs, pred_intrs, sample_idx = self._select_sampled_inputs(
-                        gen_frames,
-                        chunk_extrs,
-                        chunk_intrs,
-                    )
+                        gen_frames, chunk_extrs, chunk_intrs)
                     res = self.predict_depth_fn(
-                        frames=pred_frames,
-                        chunk_extrs=pred_extrs,
-                        chunk_intrs=pred_intrs,
-                        chunk_idx=c,
-                    )
+                        frames=pred_frames, chunk_extrs=pred_extrs,
+                        chunk_intrs=pred_intrs, chunk_idx=c)
                     depth_r, mask_r = res["depths"], res["masks"]
                     map_extrs, map_intrs = res["map_extrinsics"], res["map_intrinsics"]
                     self._update_map(
                         frames=pred_frames, depths=depth_r,
                         extrinsics=map_extrs, intrinsics=map_intrs, depth_mask=mask_r)
-                    res = self._slice_result_by_indices(res, torch.arange(depth_r.shape[0], dtype=torch.long))
                 self.all_frames = torch.cat([self.all_frames, gen_frames], dim=0)
                 self.all_depths = torch.cat([self.all_depths, depth_r.cpu()], dim=0)
                 self.all_masks = torch.cat([self.all_masks, mask_r.cpu()], dim=0)
@@ -1001,29 +869,39 @@ class WanWorldPipeline(WanWorldDepthPredictionMixin, WorldGenPipeline):
                     [self.all_extrinsics, map_extrs.detach().cpu().float()], dim=0)
                 self.all_intrinsics = torch.cat(
                     [self.all_intrinsics, map_intrs.detach().cpu().float()], dim=0)
+                output_frames, output_extrs, output_intrs = gen_frames, chunk_extrs, chunk_intrs
 
             # accumulate latents (for history of the next chunk)
             self._frame_latents = torch.cat([self._frame_latents, sampled], dim=2)
 
-            # Per-chunk depth-mask debug dump (predicted depth + separate
-            # confidence / sky masks), mirroring the failure case under
-            # debugs/world_gen_eval/.../mask_debug/.
-            self._save_chunk_mask_debug(save_dir, f"chunk_{c:02d}", res)
-
-            self._save_accumulated_vis(save_dir, f"chunk_{c:02d}")
+            # Do not reintroduce final-chunk DA3 work through export-only depth.
+            # Masked placeholders preserve RGB/depth indexing without pretending
+            # that the unneeded final depth has been predicted.
+            if skip_depth:
+                dense_depth, dense_mask = depth_r, mask_r
+            else:
+                dense_depth, dense_mask = self._dense_output_depth(
+                    output_frames, output_extrs, output_intrs, sample_idx, depth_r, mask_r)
+            self._output_depths = (dense_depth if c == 0 else torch.cat(
+                [self._output_depths, dense_depth], dim=0))
+            self._output_masks = (dense_mask if c == 0 else torch.cat(
+                [self._output_masks, dense_mask], dim=0))
+            self._save_chunk_outputs(
+                save_dir, c, output_frames, dense_depth, dense_mask, skip_depth=skip_depth)
+            del dense_depth, dense_mask
             if verbose:
                 print(f"  Chunk {c}: total {self.all_frames.shape[0]} frames")
 
         # ── Final output ────────────────────────────────────────────────
+        self._finalize_outputs(
+            save_dir, self.all_frames, self._output_depths, self._output_masks)
         all_frames_uint8 = (self.all_frames.clamp(0, 1) * 255).to(torch.uint8)
-        if save_dir is not None:
-            final_vis = post_process_video_for_visualize(
-                self.all_frames, layout='fhw3', value_range=(0, 1))
-            write_video(str(save_dir / "output.mp4"), final_vis, fps=8)
 
         return {
             "frames": all_frames_uint8,
-            "depths": self.all_depths,
+            "depths": self._output_depths,
+            "masks": self._output_masks,
+            "sha256": self._output_manifest,
             "extrinsics": self.all_extrinsics,
             "intrinsics": self.all_intrinsics,
         }

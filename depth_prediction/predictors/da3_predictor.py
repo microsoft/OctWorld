@@ -22,6 +22,12 @@ _DA3_STREAMING_ROOT = _DA3_ROOT / "da3_streaming"
 _DA3_DEFAULT_CONFIG = str(_DA3_STREAMING_ROOT / "configs" / "base_config.yaml")
 _DA3_WEIGHTS_ROOT = Path(__file__).resolve().parents[2] / "model_weights" / "da3"
 
+# Match the evaluated DA3 preprocessing on BOTH inference paths. 504 is the
+# longest-side target, not a square size; patch14 rounding maps 480x832 RGB to
+# 294x504. Streamer chunk_size/overlap settings do not control this resolution.
+_DA3_PROCESS_RES = 504
+_DA3_PROCESS_RES_METHOD = "upper_bound_resize"
+
 if _DA3_SRC not in sys.path:
     sys.path.insert(0, _DA3_SRC)
 
@@ -66,6 +72,9 @@ class DA3Predictor(BaseDepthPredictor):
         config: dict | None = None,
         device: str = "cuda",
     ):
+        from depth_prediction.predictors.da3_backend import require_da3_swiglu_backend
+
+        self.backend_info = require_da3_swiglu_backend()
         from depth_anything_3.api import DepthAnything3
 
         self.config = config or load_da3_config()
@@ -91,7 +100,7 @@ class DA3Predictor(BaseDepthPredictor):
         self.model.requires_grad_(False)
         self.model = self.model.to(self.device)
 
-        print("[DA3Predictor] initialized.")
+        print(f"[DA3Predictor] initialized; backend={self.backend_info}")
 
     # ------------------------------------------------------------------
     # Low-level API (used by DA3StreamingOnline)
@@ -106,7 +115,10 @@ class DA3Predictor(BaseDepthPredictor):
         align_to_input: bool = False,
         skip_pose_align: bool = False,
     ):
-        """Run raw DA3 inference on numpy RGB frames.
+        """Run DA3 with the evaluated 504 / upper_bound_resize preprocessing.
+
+        Normal and no-Umeyama paths use the same explicit processing settings;
+        the output size depends on the input aspect ratio and patch14 rounding.
 
         Args:
             frames: List of (H, W, 3) uint8 RGB numpy arrays.
@@ -147,6 +159,8 @@ class DA3Predictor(BaseDepthPredictor):
                     predictions = self._inference_no_umeyama(
                         frames, extrinsics=extrinsics, intrinsics=intrinsics,
                         ref_view_strategy=strategy,
+                        process_res=_DA3_PROCESS_RES,
+                        process_res_method=_DA3_PROCESS_RES_METHOD,
                     )
                 else:
                     predictions = self.model.inference(
@@ -155,6 +169,8 @@ class DA3Predictor(BaseDepthPredictor):
                         intrinsics=intrinsics,
                         align_to_input_ext_scale=align_to_input,
                         ref_view_strategy=strategy,
+                        process_res=_DA3_PROCESS_RES,
+                        process_res_method=_DA3_PROCESS_RES_METHOD,
                     )
                 predictions.depth = np.squeeze(predictions.depth)
                 predictions.conf -= 1.0

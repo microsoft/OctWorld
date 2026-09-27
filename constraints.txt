@@ -1,0 +1,6 @@
+# Protect the CUDA ABI stack when resolving Python dependencies.
+torch==2.8.0+cu126
+torchvision==0.23.0+cu126
+xformers==0.0.32.post2
+flash-attn==2.8.3
+numpy==2.2.6

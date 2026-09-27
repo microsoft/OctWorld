@@ -8,8 +8,9 @@ required by the Wan AR world-generation rollout:
 
   1. The **last frame of every** ``select`` **block is always kept** (so each
      chunk's last frame becomes a keyframe).
-  2. A **maximum interval**: if more than ``max_interval`` frames have passed
-     since the last keyframe, the current frame is forced to be a keyframe.
+  2. A **skipped-frame counter threshold**: after ``max_interval`` frames have
+      been skipped, force the next frame. With 8, static input can therefore
+      yield keyframe indices 0, 9, 18 (not a strict 8-frame index gap).
   3. An **adjustable motion threshold**.
 
 The selector is **stateful across** ``select`` **calls** (the reference frame
@@ -37,10 +38,11 @@ class RaftKeyframeSelector:
     """Stateful motion-gated keyframe selector backed by RAFT-Large.
 
     Args:
-        threshold: mean RAFT flow magnitude (full-res pixels) above which a
-            frame becomes a keyframe.
-        max_interval: force a keyframe if this many frames have passed since the
-            last keyframe without one being selected (default 8).
+        threshold: mean RAFT flow magnitude in preprocessed RAFT pixels; keep a
+            frame when the magnitude is strictly greater. Inputs are resized
+            to multiples of 8 (480x832 is unchanged; 294x504 becomes 288x504).
+        max_interval: skipped-frame counter threshold, checked before increment
+            (default 8, allowing a 9-frame index gap). Block ends are always kept.
         device: torch device for the RAFT model.
         weights_path: local weights file, overriding RAFT_WEIGHTS_PATH. Defaults
             to the release's model_weights/raft/ checkpoint when neither is set.

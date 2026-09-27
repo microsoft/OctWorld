@@ -34,8 +34,10 @@ class IntegrationConfig:
     carve_octree_depth_strategy: str = "pixel_size_to_volume_size"
     carve_bigger_voxel_pixel_size_scale: float = 2.0
     interplation_mode: str = "nearest"  # "nearest" or "trilinear"
-    carve_cube_extend_size: int = 2
-    integration_mode: str = "online"  # "online": incremental; "offline": allocate-all -> reset -> update-all
+    carve_cube_extend_size: int = 2  # Legacy field; allocator uses its own default (2).
+    # Both modes allocate new frames only; offline resets observations and
+    # updates all cached frames. map_frames' explicit argument takes precedence.
+    integration_mode: str = "online"
     frustum_batch_size: int = 20  # Number of camera views to batch when fusing
 
 
@@ -218,8 +220,8 @@ class OctMapMapper(BaseMapper):
             integration_mode: "online" 或 "offline"，None 时回退到 config 中的
                 ``integration_mode``。
                 - online: 增量式，只对新帧做 allocate + update。
-                - offline: 保留 octree 结构，对全部帧 allocate，清零 observation
-                  weights，再对全部帧重新 update。
+                                - offline: 保留 octree 结构，只为新增帧 allocate，清零 observation
+                                    weights，再对全部缓存帧重新 update。不是 DA3 streaming 开关。
             only_allocate: 是否仅进行 allocation 不做 TSDF update
         """
         integration_mode = integration_mode or self.integration_config.integration_mode
