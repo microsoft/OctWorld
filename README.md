@@ -12,15 +12,11 @@ replacement or placeholder URL.
 
 **OctMap-Guided Generation with Precise Camera Control**
 
-<video src="https://maxtirerror.github.io/octworldpage/assets/method/octmapworkflowillu_v1.mp4" poster="assets/readme/overview-workflow.jpg" controls muted loop playsinline preload="metadata" width="960">
-    <a href="https://maxtirerror.github.io/octworldpage/assets/method/octmapworkflowillu_v1.mp4"><img src="assets/readme/overview-workflow.jpg" alt="Play the OctWorld overview: camera control, spatial memory, and video generation." width="960"></a>
-</video>
+https://github.com/user-attachments/assets/7e8bdacb-6480-495c-a112-09cb2e12f222
 
 **Inside OctMap Online Integration**
 
-<video src="https://maxtirerror.github.io/octworldpage/assets/method/Octmap_Visualization_combined.mp4" poster="assets/readme/overview-integration.jpg" controls muted loop playsinline preload="metadata" width="960">
-    <a href="https://maxtirerror.github.io/octworldpage/assets/method/Octmap_Visualization_combined.mp4"><img src="assets/readme/overview-integration.jpg" alt="Play the OctMap overview: RGB-D unprojection, adaptive octree carving, and online integration." width="960"></a>
-</video>
+https://github.com/user-attachments/assets/0ba249af-5487-4253-803d-57feab1f3973
 
 *If inline playback is unavailable, open the [generation workflow video](https://maxtirerror.github.io/octworldpage/assets/method/octmapworkflowillu_v1.mp4),
 the [online integration video](https://maxtirerror.github.io/octworldpage/assets/method/Octmap_Visualization_combined.mp4),
