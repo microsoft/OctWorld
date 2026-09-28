@@ -6,21 +6,16 @@
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 **Official code repository:** [microsoft/OctWorld](https://github.com/microsoft/OctWorld).
-The repository is currently private; sign in with an account that has access.
-Unauthenticated requests return **404** (checked September 24, 2026); this is not a
-replacement or placeholder URL.
+**Model weights:** [OctWorld-1.5 on Hugging Face](https://huggingface.co/Maxtir/OctWorld-1.5).
 
 **OctMap-Guided Generation with Precise Camera Control**
 
-https://github.com/user-attachments/assets/7e8bdacb-6480-495c-a112-09cb2e12f222
+https://github.com/user-attachments/assets/3929178d-df5f-4e41-9d98-7d607948eb26
 
 **Inside OctMap Online Integration**
 
-https://github.com/user-attachments/assets/0ba249af-5487-4253-803d-57feab1f3973
+https://github.com/user-attachments/assets/dd285158-6a82-48eb-ae01-b89f706cc874
 
-*If inline playback is unavailable, open the [generation workflow video](https://maxtirerror.github.io/octworldpage/assets/method/octmapworkflowillu_v1.mp4),
-the [online integration video](https://maxtirerror.github.io/octworldpage/assets/method/Octmap_Visualization_combined.mp4),
-or the [project page](https://maxtirerror.github.io/octworldpage/#overview).*
 
 **OctWorld** is a video generation framework with persistent **3D spatial memory**.
 Starting from a single image, it generates explorable scenes along user-specified
@@ -52,33 +47,26 @@ Condition generation on a first-frame image, camera poses, anchor depth, and tex
 The customization tools turn camera-movement instructions into trajectories,
 with optional smooth interpolation, MoGe anchor depth, and Qwen3-VL prompt planning.
 
-### 4. Single-Case and Batch Inference
-
-Run one scene or reuse a loaded model across a dataset. Three bundled examples
-cover a real image with its original trajectory, the same image with a custom
-trajectory, and a synthetic image with a custom trajectory.
-
 ## 🗺️ TODO / Release Checklist
 
 - [x] Release the paper and project page.
 - [x] Release single-case and batch world-generation inference code.
 - [x] Release OctMap spatial memory and depth-prediction integration.
 - [x] Release example inputs and custom camera-trajectory tools.
-- [ ] Publish **OctWorld-1.5** weights for public access on [Hugging Face](https://huggingface.co/Maxtir/OctWorld-1.5).
+- [x] Release **OctWorld-1.5** weights on [Hugging Face](https://huggingface.co/Maxtir/OctWorld-1.5).
 - [ ] Release **datapipe** — training-data processing and preparation (**not released yet**).
 - [ ] Release **training code** — end-to-end training and fine-tuning (**not released yet**).
 
-Checked code items describe what is included in this source snapshot, not public
-repository access. The custom-input builder below prepares **inference inputs**;
-it is not the unreleased training-data pipeline.
+The custom-input builder below prepares **inference inputs**; it is not the
+training-data pipeline listed above.
 
 ## 🛠️ Installation
 
 ### Prerequisites
 
-- **System:** Linux x86_64, Python **3.10** (current environment: 3.10.21).
+- **System:** Linux x86_64, Python **3.10** (tested with 3.10.21).
 - **Hardware:** an NVIDIA Ampere-or-newer GPU with **at least 70 GB of GPU memory**.
-  The current environment uses an **A100 80 GB**.
+    Tested on an **A100 80 GB**.
 - **Toolchain:** **CUDA Toolkit 12.6**, a compatible NVIDIA driver, a C++ compiler,
   Git, and FFmpeg. The toolkit is needed for native rendering extensions, not just
   the CUDA runtime bundled with PyTorch.
@@ -94,17 +82,14 @@ it is not the unreleased training-data pipeline.
     cd OctWorld
     ```
 
-    Access to [microsoft/OctWorld](https://github.com/microsoft/OctWorld) is required
-    until it becomes public. For SSH-authenticated collaborators, the remote is
-    `git@github.com:microsoft/OctWorld.git`. A 404 or "Repository not found" may mean
-    the active credentials lack access. For an existing checkout, run
+    For an existing checkout, initialize the submodules with
     `git submodule update --init --recursive`.
 
 2. Activate a Python 3.10 environment. If needed, create it first:
 
     ```bash
-    conda create -n base-pt python=3.10.21 -y
-    conda activate base-pt
+    conda create -n octworld python=3.10.21 -y
+    conda activate octworld
     ```
 
     Skip the creation command if the environment already exists.
@@ -120,7 +105,7 @@ it is not the unreleased training-data pipeline.
     it does not create environments, install system packages, or download weights.
     It uses [requirements.txt](requirements.txt), protects the CUDA stack with
     [constraints.txt](constraints.txt), and pins native/Git dependencies to the
-    revisions used by the current environment.
+    tested revisions.
 
 4. Check an existing environment without reinstalling anything:
 
@@ -137,16 +122,21 @@ it is not the unreleased training-data pipeline.
 
 ### OctWorld-1.5
 
-**OctWorld-1.5** is the Wan 14B-based world-generation model. Its model repository is
+**OctWorld-1.5** is the Wan 14B-based world-generation model, available at
 [Maxtir/OctWorld-1.5](https://huggingface.co/Maxtir/OctWorld-1.5) on Hugging Face.
-The repository is currently **private**, and the complete upload has not yet
-passed verification; this link is **not an announcement of a public or complete
-download**. The intended checkpoint is **v2 / run1 / step7000**, as described in
-the [inference guide](example/worldgen/wan/README.md).
+See the [inference guide](example/worldgen/wan/README.md) for model loading and
+generation options.
 
-This is the **only model package deliberately skipped** by the auxiliary downloader
-below. Generation requires it and cannot run from auxiliary weights alone. If a
-complete package has been provided separately, place it in the layout shown below.
+Download the complete model package from the repository root after installation:
+
+```bash
+hf download Maxtir/OctWorld-1.5 --local-dir model_weights/octworld-1.5
+```
+
+The `hf` CLI is included in the installed `huggingface-hub` dependency. This
+downloads the checkpoint, pipeline configuration, and negative-text embedding
+into the layout shown below. Generation requires **both OctWorld-1.5 and the
+auxiliary models**; the auxiliary downloader does not download OctWorld-1.5.
 
 ### Download All Auxiliary Models
 
@@ -183,8 +173,7 @@ python scripts/download_models.py --check
 
 Use `--models wan da3 raft skyseg` for bundled-case inference only, or
 `--models moge qwen` for custom-input preparation only. The default downloads both
-groups. No private OctWorld repository ID or access token is required for the
-public auxiliary downloads.
+groups.
 
 The default output is the repository's local model directory, independent of the
 shell's working directory. Model weights are **not stored in Git**:
@@ -229,9 +218,6 @@ python example/worldgen/wan/world_gen.py \
 ```
 
 This example generates **4 chunks / 321 frames** at **480 × 832 (H × W), 15 fps**.
-To try just the first chunk, add `--max_chunks 1` and use a different output
-directory. That produces 81 frames, including the input image; it is not a
-resume checkpoint for the full run.
 
 Successful single-case runs contain:
 
@@ -299,25 +285,31 @@ keyframes. The [customization guide](example/customize_world_gen/README.md)
 documents supported movements, trajectory preview, dataset validation, and
 rebuilding the complete bundled dataset.
 
-## 🧩 Components and Acknowledgements
+## 🧩 Components
 
 - **[OctWorld](octworld):** Wan-based models and autoregressive inference pipelines.
 - **[Spatial Memory](spatial_memory):** OctMap mapping and spatial-condition rendering.
 - **[Depth Prediction](depth_prediction):** depth-model wrappers and camera alignment.
 - **[Examples and Assets](assets/README.md):** ready-to-run inputs and editable custom cases.
 
-This project builds on [Wan](https://github.com/Wan-Video/Wan2.1),
-[Depth Anything 3](https://github.com/ByteDance-Seed/Depth-Anything-3),
-[MoGe](https://github.com/microsoft/MoGe),
-[Qwen3-VL](https://github.com/QwenLM/Qwen3-VL),
-[RAFT](https://github.com/princeton-vl/RAFT), and
-[nvdiffrast](https://github.com/NVlabs/nvdiffrast). We thank their authors for
-making these tools available.
-
 ## ⚖️ License
 
 The code is released under the [MIT License](LICENSE). Third-party code, model
 weights, and datasets remain subject to their respective licenses and usage terms.
+
+## Acknowledgement
+
+We thank the following open-source projects that this work builds upon:
+
+- [Wan2.1](https://github.com/Wan-Video/Wan2.1)
+- [Lyra-2](https://github.com/nv-tlabs/lyra/tree/main/Lyra-2)
+- [FramePack](https://github.com/lllyasviel/FramePack)
+- [Depth Anything 3](https://github.com/ByteDance-Seed/depth-anything-3)
+- [MoGe](https://github.com/microsoft/MoGe)
+
+The [example assets](assets/README.md) include cases from
+[WorldScore](https://github.com/haoyi-duan/WorldScore) and
+[DL3DV-10K](https://github.com/DL3DV-10K/Dataset).
 
 ## 📚 Citation
 
@@ -334,25 +326,3 @@ If you find OctWorld useful for your research, please cite our paper:
     year    = {2026}
 }
 ```
-
-## Contributing
-
-This project welcomes contributions and suggestions.  Most contributions require you to agree to a
-Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
-the rights to use your contribution. For details, visit [Contributor License Agreements](https://cla.opensource.microsoft.com).
-
-When you submit a pull request, a CLA bot will automatically determine whether you need to provide
-a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
-provided by the bot. You will only need to do this once across all repos using our CLA.
-
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
-contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-
-## Trademarks
-
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
-trademarks or logos is subject to and must follow
-[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/legal/intellectualproperty/trademarks/usage/general).
-Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
-Any use of third-party trademarks or logos are subject to those third-party's policies.
