@@ -833,9 +833,20 @@ footer {
 
 .footer-brand {
   display: grid;
-  gap: 8px;
+  gap: 16px;
   flex-shrink: 0;
   text-transform: uppercase;
+}
+
+.microsoft-logo {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 24px;
+  align-items: center;
+}
+
+.microsoft-logo img {
+  display: block;
 }
 
 .footer-details {
@@ -866,7 +877,8 @@ footer {
   color: var(--accent);
 }
 
-.footer-links a:focus-visible {
+.footer-links a:focus-visible,
+.microsoft-logo:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
 }
