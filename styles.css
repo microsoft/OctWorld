@@ -111,7 +111,7 @@ video {
   object-fit: contain;
 }
 
-nav {
+.site-header nav {
   display: flex;
   gap: 26px;
   color: var(--muted);
@@ -120,8 +120,8 @@ nav {
   text-transform: uppercase;
 }
 
-nav a:hover,
-nav a:focus-visible {
+.site-header nav a:hover,
+.site-header nav a:focus-visible {
   color: var(--accent);
 }
 
@@ -822,23 +822,53 @@ pre {
 
 footer {
   display: flex;
+  gap: 24px 40px;
+  align-items: flex-start;
   justify-content: space-between;
   padding: 30px 0 46px;
   border-top: 1px solid var(--line);
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 11px/1.7 var(--mono);
+}
+
+.footer-brand {
+  display: grid;
+  gap: 8px;
+  flex-shrink: 0;
   text-transform: uppercase;
+}
+
+.footer-details {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  text-align: right;
 }
 
 .footer-links {
   display: flex;
-  gap: 24px;
+  flex-wrap: wrap;
+  gap: 8px 24px;
   align-items: center;
+  justify-content: flex-end;
+}
+
+.footer-links a {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .footer-links a:hover,
 .footer-links a:focus-visible {
   color: var(--accent);
+}
+
+.footer-links a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
 }
 
 @media (max-width: 900px) {
@@ -857,8 +887,20 @@ footer {
     padding-inline: 14px;
   }
 
-  nav {
+  .site-header nav {
     gap: 14px;
+  }
+
+  footer {
+    flex-direction: column;
+  }
+
+  .footer-details {
+    text-align: left;
+  }
+
+  .footer-links {
+    justify-content: flex-start;
   }
 
   .intro-content {
@@ -911,8 +953,8 @@ footer {
 }
 
 @media (max-width: 560px) {
-  nav a:nth-child(3),
-  nav a:last-child {
+  .site-header nav a:nth-child(3),
+  .site-header nav a:last-child {
     display: none;
   }
 
