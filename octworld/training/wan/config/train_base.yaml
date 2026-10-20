@@ -8,7 +8,7 @@
 #                                 OctWorldWanTrainer
 experiment:
   data_tag: dl3dv           # used to derive experiment_name
-  name_suffix: v2           # -> dl3dv-octworld-wan-wan14b_i2v-b64-v2
+  name_suffix: ""           # optional user-defined experiment suffix
 
 model:
   variant: wan14b_i2v       # wan14b_i2v / tiny

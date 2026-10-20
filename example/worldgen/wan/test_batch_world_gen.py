@@ -42,8 +42,17 @@ class BatchWorldGenTest(unittest.TestCase):
         for name in shared:
             self.assertEqual(getattr(batch, name), getattr(single, name), name)
 
+        dataset = PROJECT_ROOT / "assets" / "standard"
+        scene = dataset / "scenes" / "scene_00000"
+        self.assertEqual(Path(batch.instances), dataset / "instances.json")
+        self.assertEqual(Path(single.image), scene / "image.png")
+        self.assertEqual(Path(single.trajectory), scene / "trajectory.npz")
+        self.assertEqual(Path(single.anchor_depth), scene / "anchor_depth.png")
+        self.assertEqual(Path(world_gen.DEFAULT_PROMPT_FILE), scene / "prompt.txt")
+        self.assertEqual(Path(single.save_dir), Path("outputs/dl3dv_gt"))
+
     def test_bundled_dataset_loads(self) -> None:
-        dataset = PROJECT_ROOT / "assets" / "wan_standard"
+        dataset = PROJECT_ROOT / "assets" / "standard"
         instances = json.loads((dataset / "instances.json").read_text())
         self.assertEqual(len(instances), 3)
         for instance in instances:

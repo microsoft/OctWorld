@@ -16,8 +16,7 @@ class ExperimentConfig(BaseModel):
     """Metadata used to derive the experiment name."""
 
     data_tag: str
-    # Optional suffix appended to the derived experiment name (e.g. ``v2`` gives
-    # ``dl3dv-octworld-wan-wan14b_i2v-b64-v2``). Empty => no suffix.
+    # Optional suffix appended to the derived experiment name; empty means none.
     name_suffix: str = ""
 
 

@@ -523,7 +523,7 @@ class WanWorldPipeline(WanWorldOutputMixin, WanWorldDepthPredictionMixin, WorldG
         noise_shape = (1, 16, GEN_FRAMES, H_lat, W_lat)
         if sampling_generator is None:
             raise ValueError("sampling_generator must be initialized by __call__")
-        # Historical v2 demo contract: one continuous CPU FP32 stream per case,
+        # Use one continuous CPU FP32 sampling stream per case,
         # then cast to the model dtype/device. Do not draw directly in BF16 or
         # reseed per chunk; either would change the recorded latent-noise hashes.
         noise = self.world_generator.generate_noise(

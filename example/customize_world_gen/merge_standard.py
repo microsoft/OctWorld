@@ -1,4 +1,4 @@
-"""Merge validated wan_standard datasets into one clean dataset."""
+"""Merge validated standard datasets into one clean dataset."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ import json
 import shutil
 from pathlib import Path
 
-from validate_wan_standard import INSTANCE_KEYS, validate_wan_standard
+from validate_standard import INSTANCE_KEYS, validate_standard
 
 
-def merge_wan_standard(
+def merge_standard(
     inputs: list[Path], output: Path, *, overwrite: bool = False
 ) -> dict[str, int]:
     """Validate, renumber, and atomically publish multiple datasets."""
@@ -30,7 +30,7 @@ def merge_wan_standard(
     merged_instances = []
     try:
         for source_root in inputs:
-            validate_wan_standard(source_root)
+            validate_standard(source_root)
             source_instances = json.loads(
                 (source_root / "instances.json").read_text(encoding="utf-8")
             )
@@ -55,7 +55,7 @@ def merge_wan_standard(
         (staging / "instances.json").write_text(
             json.dumps(merged_instances, indent=2) + "\n", encoding="utf-8"
         )
-        summary = validate_wan_standard(staging)
+        summary = validate_standard(staging)
         if output.exists():
             shutil.rmtree(output)
         staging.replace(output)
@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    summary = merge_wan_standard(args.input, args.output, overwrite=args.overwrite)
+    summary = merge_standard(args.input, args.output, overwrite=args.overwrite)
     print(json.dumps(summary, indent=2))
 
 

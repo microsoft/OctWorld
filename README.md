@@ -114,9 +114,7 @@ training-data pipeline listed above.
     ```
 
     This checks imports, DA3's fused FFN, GPU capacity, and small FlashAttention /
-    nvdiffrast CUDA operations without loading any model weights. See the
-    [installation notes](docs/installation.md) for system prerequisites, dependency
-    choices, and the CPU-only import check.
+    nvdiffrast CUDA operations without loading any model weights.
 
 ## 📦 Pretrained Models
 
@@ -240,7 +238,7 @@ Run all three [bundled cases](assets/README.md) with one model load:
 
 ```bash
 python example/worldgen/wan/batch_world_gen.py \
-        --instances assets/wan_standard/instances.json \
+    --instances assets/standard/instances.json \
         --dit_ckpt model_weights/octworld-1.5/model \
         --model_weights_dir model_weights \
         --base_folder outputs/batch
@@ -254,7 +252,7 @@ the runner supports `--rank` and `--world_size`; select each worker's GPU with
 ### 3. Custom Images and Camera Paths
 
 The [customization example](example/customize_world_gen/README.md) converts an
-image and a camera-turn file into the same `wan_standard` format used by batch
+image and a camera-turn file into the same `standard` dataset format used by batch
 inference. It plans prompts with Qwen3-VL, estimates anchor depth with MoGe v1,
 and validates the generated dataset before publishing it.
 
@@ -262,20 +260,20 @@ Build a custom case from the bundled editable Minecraft input without modifying
 the original assets:
 
 ```bash
-python example/customize_world_gen/build_wan_standard.py \
+python example/customize_world_gen/build_standard.py \
         --image assets/raw/MinecraftCanyon/image.png \
         --camera-movement assets/raw/MinecraftCanyon/camera_turns.txt \
-        --dl3dv-source assets/wan_standard \
+    --dl3dv-source assets/standard \
         --model-dir model_weights/Qwen3-VL-8B-Instruct \
         --smooth-camera \
-        --output outputs/my_case/wan_standard
+    --output outputs/my_case/standard
 ```
 
 Then generate its video:
 
 ```bash
 python example/worldgen/wan/batch_world_gen.py \
-        --instances outputs/my_case/wan_standard/instances.json \
+    --instances outputs/my_case/standard/instances.json \
         --base_folder outputs/my_case/generated
 ```
 

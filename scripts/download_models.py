@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Download/check all public auxiliary models without loading Torch or a GPU.
 
-Only the unpublished OctWorld-1.5 model package is deliberately omitted.
+Download OctWorld-1.5 separately from https://huggingface.co/Maxtir/OctWorld-1.5.
 The manifest pins upstream revisions, file sizes, and LFS SHA-256/Git blob hashes.
 """
 
@@ -127,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     names = list(dict.fromkeys(args.models))
     root = args.output_dir.expanduser().absolute()
     print(f"Model root: {root}")
-    print("SKIP OctWorld-1.5: personal Hugging Face checkpoint is not published yet.\n"
+    print("OctWorld-1.5: download separately from https://huggingface.co/Maxtir/OctWorld-1.5.\n"
           "This command checks/downloads auxiliaries only, not generation readiness.")
     total = sum(entry[1] for name in names for entry in manifest[name]["files"])
     print(f"Selected auxiliary files: {total / 1e9:.2f} GB ({total / 2**30:.2f} GiB)")

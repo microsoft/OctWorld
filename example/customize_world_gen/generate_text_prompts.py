@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
         "--dl3dv-source",
         type=Path,
         required=True,
-        help="DL3DV wan_standard root used for prompt style examples",
+        help="DL3DV standard dataset root used for prompt style examples",
     )
     parser.add_argument(
         "--model-dir", default="model_weights/Qwen3-VL-8B-Instruct"

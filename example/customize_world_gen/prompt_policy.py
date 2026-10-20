@@ -37,7 +37,7 @@ ACTION_EFFECTS = {
 def load_dl3dv_prompt_examples(
     source_dir: str | Path, max_examples: int = 8
 ) -> list[str]:
-    """Load deterministic style examples from a DL3DV wan_standard dataset."""
+    """Load deterministic style examples from a DL3DV standard dataset."""
 
     source_dir = Path(source_dir).expanduser().resolve()
     instances_path = source_dir / "instances.json"

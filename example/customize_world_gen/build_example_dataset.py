@@ -1,4 +1,4 @@
-"""Build the bundled three-case wan_standard dataset in one pass."""
+"""Build the bundled three-case standard dataset in one pass."""
 
 from __future__ import annotations
 
@@ -197,11 +197,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source-dataset",
         type=Path,
-        default=PROJECT_ROOT / "assets/wan_standard",
+        default=PROJECT_ROOT / "assets/standard",
         help="Dataset providing the unchanged DL3DV GT case and prompt examples",
     )
     parser.add_argument(
-        "--output", type=Path, default=PROJECT_ROOT / "assets/wan_standard"
+        "--output", type=Path, default=PROJECT_ROOT / "assets/standard"
     )
     parser.add_argument("--model-dir", default="model_weights/Qwen3-VL-8B-Instruct")
     parser.add_argument("--moge-model", default="Ruicheng/moge-vitl")

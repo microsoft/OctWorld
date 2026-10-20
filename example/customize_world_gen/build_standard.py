@@ -1,4 +1,4 @@
-"""Build one clean wan_standard case from an approved camera trajectory."""
+"""Build one clean standard case from an approved camera trajectory."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from camera_trajectory import (
 )
 from generate_text_prompts import generate_prompt_file
 from geometry import load_image, predict_moge_v1
-from validate_wan_standard import validate_wan_standard
+from validate_standard import validate_standard
 
 
 FINAL_FRAMES_PER_TURN = 80
@@ -98,7 +98,7 @@ def build(args: argparse.Namespace) -> dict[str, int]:
         (staging / "instances.json").write_text(
             json.dumps([_instance()], indent=2) + "\n", encoding="utf-8"
         )
-        summary = validate_wan_standard(staging, require_identity=True)
+        summary = validate_standard(staging, require_identity=True)
         if output.exists():
             shutil.rmtree(output)
         staging.replace(output)

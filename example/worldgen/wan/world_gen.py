@@ -1,4 +1,4 @@
-"""Driver for WanWorldPipeline — AR world generation from image + trajectory.
+"""OctWorld Generation driver using WanWorldPipeline with image + trajectory.
 
 User inputs (single canonical format each):
   1. a first-frame image (any PIL-readable image),
@@ -16,11 +16,11 @@ Usage:
     python example/worldgen/wan/world_gen.py \
         --image path/to/first.png \
         --trajectory path/to/traj.npz \
-        --anchor_depth assets/wan_standard/scenes/scene_00000/anchor_depth.png \
-        --prompt_file assets/wan_standard/scenes/scene_00000/prompt.txt \
+        --anchor_depth assets/standard/scenes/scene_00000/anchor_depth.png \
+        --prompt_file assets/standard/scenes/scene_00000/prompt.txt \
         --dit_ckpt <ckpt.pt> \
         --model_weights_dir model_weights \
-        --save_dir debugs/wan_world_test/ \
+        --save_dir outputs/dl3dv_gt/ \
         [--preview_only]
 """
 
@@ -41,7 +41,7 @@ DEFAULT_DIT_CKPT = os.path.join(
     PROJECT_ROOT, "model_weights", "octworld-1.5", "model")
 
 DEFAULT_CASE_DIR = os.path.join(
-    PROJECT_ROOT, "assets", "wan_standard", "scenes", "scene_00000")
+    PROJECT_ROOT, "assets", "standard", "scenes", "scene_00000")
 DEFAULT_IMAGE = os.path.join(DEFAULT_CASE_DIR, "image.png")
 DEFAULT_TRAJECTORY = os.path.join(DEFAULT_CASE_DIR, "trajectory.npz")
 DEFAULT_ANCHOR_DEPTH = os.path.join(DEFAULT_CASE_DIR, "anchor_depth.png")
@@ -49,8 +49,8 @@ DEFAULT_PROMPT_FILE = os.path.join(DEFAULT_CASE_DIR, "prompt.txt")
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="WanWorldPipeline driver")
-    # User inputs (default = historical demo_gen sample 16)
+    p = argparse.ArgumentParser(description="OctWorld Generation driver")
+    # User inputs default to the bundled DL3DV GT case in assets/standard.
     p.add_argument("--image", default=DEFAULT_IMAGE, help="First-frame image path.")
     p.add_argument("--trajectory", default=DEFAULT_TRAJECTORY,
                    help=".npz with 'extrinsics' (T,4,4) and 'intrinsics' (T,3,3).")
@@ -61,9 +61,14 @@ def parse_args():
     p.add_argument("--prompt", default=None,
                    help="Single text prompt override (applied to all chunks). "
                         "If unset, --prompt_file is used.")
-    p.add_argument("--prompt_file", default=None,
-                   help=".txt with one prompt per chunk (single line → str). "
-                        "Defaults to the OutdoorKitchen prompt.")
+    p.add_argument(
+        "--prompt_file",
+        default=None,
+        help=(
+            ".txt with one prompt per chunk (single line → str). "
+            "Defaults to the bundled DL3DV GT prompts."
+        ),
+    )
     # Model / weights
     p.add_argument("--dit_ckpt", default=DEFAULT_DIT_CKPT,
                    help="OctWorld DiT checkpoint file or DCP directory. Defaults "
@@ -71,7 +76,7 @@ def parse_args():
     p.add_argument("--model_weights_dir", default=os.path.join(PROJECT_ROOT, "model_weights"),
                    help="Dir containing Wan2.1-I2V-14B-480P/ (VAE/T5/CLIP).")
     # Run control
-    p.add_argument("--save_dir", default="outputs/outdoor_kitchen/")
+    p.add_argument("--save_dir", default="outputs/dl3dv_gt/")
     p.add_argument("--preview_only", action="store_true",
                     help="Render the warp without diffusion; still constructs the "
                         "pipeline and requires model weights, depth prediction and a renderer.")

@@ -1,4 +1,4 @@
-"""Validate a strict customize-world-generation wan_standard dataset."""
+"""Validate a strict OctWorld standard dataset."""
 
 from __future__ import annotations
 
@@ -34,18 +34,18 @@ def _resolve_inside(root: Path, relative_path: str) -> Path:
     return path
 
 
-def validate_wan_standard(
+def validate_standard(
     root: str | Path, *, require_identity: bool = False
 ) -> dict[str, int]:
     """Validate files, geometry, prompt counts, and clean output structure."""
 
     root = Path(root).expanduser().resolve()
     if not root.is_dir():
-        raise FileNotFoundError(f"wan_standard root not found: {root}")
+        raise FileNotFoundError(f"standard dataset root not found: {root}")
     root_entries = {path.name for path in root.iterdir()}
     if root_entries != ROOT_ENTRIES:
         raise ValueError(
-            f"wan_standard root must contain only {sorted(ROOT_ENTRIES)}, "
+            f"standard dataset root must contain only {sorted(ROOT_ENTRIES)}, "
             f"got {sorted(root_entries)}"
         )
 
@@ -147,7 +147,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    summary = validate_wan_standard(
+    summary = validate_standard(
         args.root, require_identity=args.require_identity
     )
     print(json.dumps(summary, indent=2))

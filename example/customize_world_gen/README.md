@@ -1,20 +1,20 @@
 # Customize World Generation
 
-This example turns one initial image and a user-designed camera trajectory into a clean `wan_standard` input for OctWorld. The intended workflow is:
+This example turns one initial image and a user-designed camera trajectory into a clean `standard` dataset for OctWorld. The intended workflow is:
 
 1. Choose a reconstruction-friendly image.
 2. Design WorldScore-style camera turns and use Qwen3-VL to write one prompt per turn.
 3. Convert the turns into hard camera keyframes and preview the trajectory.
 4. Optionally replace linear interpolation with a smooth C2 camera path.
-5. Freeze the trajectory and build `wan_standard`.
+5. Freeze the trajectory and build the `standard` dataset.
 6. Validate the final dataset before world generation.
 
-The one-shot workflow writes one `wan_standard/` directory. A preview video is
+The one-shot workflow writes one `standard/` directory. A preview video is
 optional and is useful only while iterating on camera turns.
 
 ## Prerequisites
 
-Run commands from the repository root in the `base-pt` Conda environment. The workflow expects:
+Run commands from the repository root in the `octworld` Conda environment. The workflow expects:
 
 - A CUDA device.
 - The vendored MoGe source under `depth_prediction/thirdparty/MoGe` and its
@@ -22,7 +22,8 @@ Run commands from the repository root in the `base-pt` Conda environment. The wo
 - `model_weights/Qwen3-VL-8B-Instruct`, or another local Qwen3-VL model passed with `--model-dir`.
 - `transformers>=4.57,<4.58`, `tokenizers>=0.22,<=0.23`, and `accelerate` for
     Qwen3-VL model loading.
-- A DL3DV dataset already in `wan_standard` format. Its prompts are read as style examples for Qwen.
+- A dataset containing DL3DV cases in `standard` format, such as the bundled
+    `assets/standard`. Its prompts are read as style examples for Qwen.
 
 No image downloader or selector is included. Supplying an appropriate initial image is part of using this example.
 
@@ -31,7 +32,7 @@ Prepare both custom-input models with
 The [downloader](../../scripts/download_models.py) pins revisions and verifies
 hashes. MoGe is loaded from the local file above; missing weights produce an
 actionable error rather than starting an implicit Hugging Face download.
-See the [installation notes](../../docs/installation.md) for the shared runtime.
+See the [root README](../../README.md) for shared runtime installation.
 
 ## Choose an Initial Image
 
@@ -97,7 +98,7 @@ prompt per action with Qwen3-VL:
 python example/customize_world_gen/generate_text_prompts.py \
         --image path/to/input_image.png \
         --camera-movement path/to/camera_movement.txt \
-        --dl3dv-source path/to/DL3DV_test_train/wan_standard \
+    --dl3dv-source assets/standard \
         --model-dir model_weights/Qwen3-VL-8B-Instruct \
         --output-prompt outputs/my_case/prompt.txt
 ```
@@ -129,7 +130,7 @@ build a point cloud from the initial RGB-D frame, and inspect the warped camera
 path before running the one-shot builder.
 
 ```bash
-conda run -n base-pt --no-capture-output \
+conda run -n octworld --no-capture-output \
     python example/customize_world_gen/preview_camera_trajectory.py \
     --image path/to/input_image.png \
     --camera-movement example/customize_world_gen/trajectories/trajectory_1.txt \
@@ -149,7 +150,7 @@ The preview is a geometry diagnostic, not a prediction of final video quality. K
 
 The preview command persists only the requested MP4. Depth, point cloud, intrinsics, and rendered depth are not written as side artifacts.
 
-## Build `wan_standard`
+## Build the `standard` Dataset
 
 Run the integrated builder directly for a one-shot conversion. If `--preview`
 is provided, the builder verifies that the reviewed file exists; it does not
@@ -158,13 +159,13 @@ generates the production trajectory, validates staging, and atomically publishes
 the dataset.
 
 ```bash
-conda run -n base-pt --no-capture-output \
-    python example/customize_world_gen/build_wan_standard.py \
+conda run -n octworld --no-capture-output \
+    python example/customize_world_gen/build_standard.py \
     --image path/to/input_image.png \
     --camera-movement example/customize_world_gen/trajectories/trajectory_1.txt \
-    --dl3dv-source path/to/DL3DV_test_train/wan_standard \
+    --dl3dv-source assets/standard \
     --smooth-camera \
-    --output outputs/my_case/wan_standard
+    --output outputs/my_case/standard
 ```
 
 The final trajectory uses 80 frames per camera turn:
@@ -196,8 +197,8 @@ the original DL3DV GT scene, run:
 ```bash
 python example/customize_world_gen/build_example_dataset.py \
     --raw-root assets/raw \
-    --source-dataset assets/wan_standard \
-    --output assets/wan_standard \
+    --source-dataset assets/standard \
+    --output assets/standard \
     --model-dir model_weights/Qwen3-VL-8B-Instruct \
     --smooth-camera \
     --overwrite
@@ -216,7 +217,7 @@ The normal persistent output is:
 ```text
 outputs/my_case/
 ├── camera_trajectory_preview.mp4
-└── wan_standard/
+└── standard/
     ├── instances.json
     └── scenes/
         └── scene_00000/
@@ -228,16 +229,16 @@ outputs/my_case/
 
 `trajectory.npz` contains float32 OpenCV world-to-camera `extrinsics` with shape `(1 + 80N, 4, 4)` and normalized `intrinsics` with shape `(1 + 80N, 3, 3)`. Frame-zero extrinsic is identity. `prompt.txt` contains exactly `N` non-empty lines.
 
-The builder uses a hidden sibling staging directory such as `.wan_standard.staging`. It is removed after successful publication. If a build fails, staging is retained for diagnosis; remove it before abandoning the case.
+The builder uses a hidden sibling staging directory such as `.standard.staging`. It is removed after successful publication. If a build fails, staging is retained for diagnosis; remove it before abandoning the case.
 
 ## Validate
 
 The builder validates before publication. The validator can also be run independently without loading Qwen or MoGe:
 
 ```bash
-conda run -n base-pt --no-capture-output \
-    python example/customize_world_gen/validate_wan_standard.py \
-    outputs/my_case/wan_standard
+conda run -n octworld --no-capture-output \
+    python example/customize_world_gen/validate_standard.py \
+    outputs/my_case/standard
 ```
 
 Validation checks the exact directory contents, image size, 2D anchor depth,
@@ -258,17 +259,17 @@ The release separates two editable raw cases from one generated dataset:
 
 Only `scene_00001` and `scene_00002` have editable source material under
 `assets/raw/`, each containing exactly `image.png` and `camera_turns.txt`.
-All generated image/depth/camera/prompt files live under `assets/wan_standard/`.
+All generated image/depth/camera/prompt files live under `assets/standard/`.
 
 ## Merge Multiple Cases
 
 When several images or trajectories were built separately, merge their validated outputs into one clean dataset:
 
 ```bash
-conda run -n base-pt --no-capture-output \
-    python example/customize_world_gen/merge_wan_standard.py \
-    --input path/to/case_1/wan_standard path/to/case_2/wan_standard \
-    --output path/to/combined/wan_standard
+conda run -n octworld --no-capture-output \
+    python example/customize_world_gen/merge_standard.py \
+    --input path/to/case_1/standard path/to/case_2/standard \
+    --output path/to/combined/standard
 ```
 
 Inputs are kept in command-line order and renumbered as `scene_00000`, `scene_00001`, and so on. The merger validates every input, writes through hidden staging, and validates the combined dataset before atomic publication.
@@ -278,11 +279,11 @@ Inputs are kept in command-line order and renumbered as `scene_00000`, `scene_00
 The integrated builder is the recommended path because it keeps outputs clean. To inspect prompt behavior separately, run:
 
 ```bash
-conda run -n base-pt --no-capture-output \
+conda run -n octworld --no-capture-output \
     python example/customize_world_gen/generate_text_prompts.py \
     --image path/to/input_image.png \
     --camera-movement path/to/camera_movement.txt \
-    --dl3dv-source path/to/DL3DV_test_train/wan_standard \
+    --dl3dv-source assets/standard \
     --output-prompt tmp/prompt.txt
 ```
 
@@ -295,7 +296,7 @@ runner. Each prompt line controls its corresponding camera turn automatically:
 
 ```bash
 python example/worldgen/wan/batch_world_gen.py \
-    --instances outputs/my_case/wan_standard/instances.json \
+    --instances outputs/my_case/standard/instances.json \
     --base_folder path/to/world_gen_outputs \
     --dit_ckpt path/to/checkpoint.pt \
     --model_weights_dir model_weights

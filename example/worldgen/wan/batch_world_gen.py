@@ -1,4 +1,4 @@
-"""Batch driver for WanWorldPipeline -- run a wan_standard dataset.
+"""OctWorld Generation batch driver using WanWorldPipeline and a standard dataset.
 
 Builds the pipeline **once** and runs a list of instances sequentially. Each
 instance specifies its own inputs (image, trajectory, anchor_depth, prompt).
@@ -18,19 +18,21 @@ Sharding: pass ``--rank`` / ``--world_size`` to split instances across single-GP
 workers (``instances[rank::world_size]``, mirroring datapipe). Pin each worker to
 a GPU externally via ``CUDA_VISIBLE_DEVICES``.
 
-Instances JSON format (a list of dicts)::
+Instances JSON format (a list of dicts; all four fields are required)::
 
-    [
-      {"image": "...", "trajectory": "...npz",
-       "anchor_depth": "...png",   # optional → defaults to ParkingLot moge
-       "prompt_file": "...txt"},   # optional → defaults to ParkingLot prompt
-      ...
-    ]
+        [
+                {
+                        "image": "...png",
+                        "trajectory": "...npz",
+                        "anchor_depth": "...png",
+                        "prompt_file": "...txt"
+                }
+        ]
 
 Usage::
 
     python example/worldgen/wan/batch_world_gen.py \
-        --instances assets/wan_standard/instances.json \
+        --instances assets/standard/instances.json \
         --base_folder tmp/batch_out \
         --dit_ckpt <ckpt.pt> \
         --model_weights_dir model_weights \
@@ -60,11 +62,11 @@ if PROJECT_ROOT not in sys.path:
 DEFAULT_DIT_CKPT = os.path.join(
     PROJECT_ROOT, "model_weights", "octworld-1.5", "model")
 DEFAULT_INSTANCES = os.path.join(
-    PROJECT_ROOT, "assets", "wan_standard", "instances.json")
+    PROJECT_ROOT, "assets", "standard", "instances.json")
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="WanWorldPipeline batch driver")
+    p = argparse.ArgumentParser(description="OctWorld Generation batch driver")
     # Instances + outputs
     p.add_argument("--instances", default=DEFAULT_INSTANCES,
                    help="JSON file: a list of instance dicts (image/trajectory/"
@@ -78,9 +80,10 @@ def parse_args():
     # Sharding (single-GPU workers; pin GPUs via CUDA_VISIBLE_DEVICES)
     p.add_argument("--rank", type=int, default=0, help="Current rank.")
     p.add_argument("--world_size", type=int, default=1, help="Total ranks.")
-    # Model / weights (paths are not fixed → always CLI)
+    # Model / weights (published defaults can be overridden via CLI).
     p.add_argument("--dit_ckpt", default=DEFAULT_DIT_CKPT,
-                   help="Trained Wan DiT checkpoint (.pt). Optional in --debug.")
+                   help="OctWorld DiT checkpoint file or DCP directory. Defaults "
+                        "to model_weights/octworld-1.5/model. Optional in --debug.")
     p.add_argument("--model_weights_dir", default=os.path.join(PROJECT_ROOT, "model_weights"),
                    help="Dir containing Wan2.1-I2V-14B-480P/ (VAE/T5/CLIP).")
     # Debug

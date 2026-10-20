@@ -1,14 +1,14 @@
-# Wan World Generation
+# OctWorld Generation
 
-AR world generation with the Wan 14B FramePack backbone
+Inference guide for autoregressive OctWorld generation with the Wan 14B FramePack backbone
 ([pipeline implementation](../../../octworld/pipelines/wan/wanworld_pipeline.py)).
 
 [world_gen.py](world_gen.py) runs one case. [batch_world_gen.py](batch_world_gen.py)
-loads the pipeline once and runs a `wan_standard` dataset sequentially, with
+loads the pipeline once and runs a `standard` dataset sequentially, with
 optional rank/world-size sharding.
 
 The default single case is `scene_00000` in the bundled
-[wan_standard dataset](../../../assets/wan_standard/instances.json), with seed
+[standard dataset](../../../assets/standard/instances.json), with seed
 425 and online integration.
 
 The dataset contains three four-chunk inputs:
@@ -54,35 +54,6 @@ inputs, weights or environments.
 | Driver seed | 425; library `WanWorldPipeline.__call__` still defaults to 0 |
 | Video export | 15 fps for every chunk/final output, depth and warp video |
 
-### Seed control
-
-The example passes `--seed` both to `WanWorldPipeConfig.init_seed` (before
-model construction) and to the rollout. Library callers can set `init_seed`
-explicitly (default 0); a later rollout seed does not reconstruct loaded models.
-
-Diffusion's continuous CPU FP32 noise stream still uses `seed`, and condition
-augmentation still uses a separate device generator with `seed + 1`. The
-[`random-state helper`](../../../utils/random_state.py) additionally derives
-independent, stable streams from the case seed for:
-
-- DA3's internal random subsampling, with one isolated scope per predict call;
-- scale-fitting point selection, using its own CPU generator;
-- RAFT first-use construction/selection;
-- export-only depth and scale, isolated from the inference streams above.
-
-Each rollout resets these streams. Python, NumPy and Torch CPU/CUDA global RNG
-states are restored after auxiliary scopes, including exceptions; export work
-cannot shift later inference random draws. The output JSON records the rule
-version, initial seeds and call counts under `randomness`.
-
-This is an intentional auxiliary-RNG behavior update: old global-RNG consumption
-is no longer reproduced for DA3/scale fitting. The historical diffusion-noise
-hashes remain unchanged, but full videos may differ from the previous version.
-The upstream pose-alignment RANSAC uses its existing fixed seed 42. cuDNN
-benchmarking is disabled; exact cross-GPU/backend/kernel determinism is **not**
-guaranteed. Do not run concurrent calls on the same pipeline or share global RNG
-with unrelated worker threads if reproducibility is required.
-
 Changing export fps does not resample the trajectory, alter the frame count or
 change diffusion steps; 641 frames now play for approximately 42.733 seconds.
 Previously saved 8fps artifacts are not rewritten.
@@ -117,56 +88,17 @@ chunk 0 skips **both depth prediction and map integration** because no next
 chunk consumes its map; a single-chunk rollout still performs its full
 first-chunk depth prediction and integration.
 
-### DA3 backend dependency
-
-**xformers is required for DA3's `SwiGLUFFNFused`**, not an optional attention
-speedup: without it, upstream DA3 silently switches the FFN backend, changing
-depth/confidence and potentially the warp. The predictor now checks the backend
-before loading DA3, logs `backend_info`, and fails on a missing dependency or a
-previously cached fallback (restart after fixing the environment).
-
-The verified stack is **PyTorch 2.8.0 / CUDA 12.6, xformers 0.0.32.post2,
-flash-attn 2.8.3**. For only this tuple, the
-[preflight helper](../../../depth_prediction/predictors/da3_backend.py) temporarily
-sets an otherwise absent `XFORMERS_IGNORE_FLASH_VERSION_CHECK=1` while importing
-`xformers.ops`, then restores the environment even on failure; user-set values
-(including `0`) are preserved. This only handles an eagerly imported optional
-FMHA adapter's version check; it does **not** call xformers attention. DA3 still
-uses Torch SDPA and Wan still uses its existing FlashAttention path.
-
-The orange-region recovery was directly verified only in local seed-map probes,
-with P20 confidence, sky masking and the 1000-element mesh filter retained. This
-does not establish full first-chunk recovery or exact historical same-GPU output
-reproduction.
-
-## Run the real 14B case: first chunk, then full rollout
+## Run OctWorld Generation
 
 Run from the project root with the published model package and inference
-dependencies installed. These commands use the **real 14B checkpoint**, not a
-tiny model. Do **not** add `--debug` or `--preview_only` to these runs.
+dependencies installed. This command uses the **real 14B checkpoint**, not a
+tiny model. Do **not** add `--debug` or `--preview_only` to this run.
 
-Use a **new or empty `--save_dir` for each run**. Existing nonempty directories
+Use a **new or empty `--save_dir`**. Existing nonempty directories
 are refused rather than overwritten; symlinked output paths are also refused.
 Keep logs and unrelated files outside it so successful finalization can leave
 exactly the four output files described below.
 
-### 1. First-chunk run
-
-One chunk generates 80 new frames plus the input frame: **81 aligned
-RGB/depth/warp frames**, at **480x832 (H x W), 15 fps**.
-
-```bash
-python example/worldgen/wan/world_gen.py \
-    --dit_ckpt model_weights/octworld-1.5/model \
-    --model_weights_dir model_weights \
-    --max_chunks 1 \
-    --save_dir outputs/dl3dv_gt_first_chunk/
-```
-
-### 2. Complete rollout
-
-After inspecting the first chunk, start a new run **without `--max_chunks`**.
-This reruns the case from the beginning; it does not resume the first command.
 The supplied four prompts and 321 cameras define **4 chunks and 321
 RGB/depth/warp frames** (1 input + 4 x 80 generated), at **480x832 (H x W),
 15 fps** (approximately **21.4 seconds**).
@@ -178,12 +110,12 @@ python example/worldgen/wan/world_gen.py \
     --save_dir outputs/dl3dv_gt_4chunks/
 ```
 
-The published checkpoint is **v2 / run1 / step7000**.
+This example uses the published **OctWorld-1.5** checkpoint.
 [pipe_config.json](../../../model_weights/octworld-1.5/pipe_config.json) and
 [neg_text_embed.pt](../../../model_weights/octworld-1.5/neg_text_embed.pt) are
 auto-resolved from its OctWorld model root, above `--dit_ckpt`.
 
-Omitting the four input options selects `assets/wan_standard/scenes/scene_00000`.
+Omitting the four input options selects `assets/standard/scenes/scene_00000`.
 Pass explicit paths from `scene_00001` or `scene_00002` to run a custom case.
 Omitting `--offline_integration` selects the evaluated default online behavior.
 
@@ -195,7 +127,7 @@ seed 425, online integration, keyframe settings, and output contract as
 
 ```bash
 python example/worldgen/wan/batch_world_gen.py \
-    --instances assets/wan_standard/instances.json \
+    --instances assets/standard/instances.json \
     --base_folder outputs/batch \
     --dit_ckpt model_weights/octworld-1.5/model \
     --model_weights_dir model_weights
@@ -207,7 +139,7 @@ and either `SUCCESS.txt` or `FAILED.txt`. Use `--rank` and `--world_size` for
 single-GPU worker sharding, with `CUDA_VISIBLE_DEVICES` set externally.
 
 `--debug` selects a compatible local tiny checkpoint plus the other inference
-models; it is neither the 14B first-chunk validation nor a weight-free smoke.
+models; it is not a weight-free smoke test.
 `--preview_only` skips diffusion, but still constructs the pipeline and requires
 its weights, first-frame depth prediction and renderer.
 

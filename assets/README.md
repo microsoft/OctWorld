@@ -11,7 +11,7 @@ assets/
 │   └── MinecraftCanyon/
 │       ├── image.png
 │       └── camera_turns.txt
-└── wan_standard/
+└── standard/
     ├── instances.json
     └── scenes/
         ├── scene_00000/  # DL3DV image + original DA3 trajectory
@@ -23,7 +23,7 @@ The two directories under `raw/` are the only editable custom-case inputs. Each
 contains exactly one image and one WorldScore-style camera-turn file. The DL3DV
 GT case has no raw directory because it already includes a source trajectory.
 
-`wan_standard/` is the complete three-case dataset consumed by the single-case
+`standard/` is the complete three-case dataset consumed by the single-case
 and batch world-generation examples. Every scene is limited to four chunks:
 321 camera poses and four prompt lines.
 
