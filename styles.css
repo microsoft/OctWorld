@@ -100,12 +100,14 @@ video {
   display: flex;
   gap: 9px;
   align-items: center;
+  max-width: 100%;
   font-size: 14px;
   font-weight: 600;
 }
 
 .wordmark-logo {
   display: block;
+  flex-shrink: 0;
   width: 30px;
   height: 30px;
   object-fit: contain;
@@ -896,7 +898,11 @@ footer {
   }
 
   .site-header {
-    padding-inline: 14px;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    height: auto;
+    min-height: 58px;
+    padding: 10px 14px;
   }
 
   .site-header nav {

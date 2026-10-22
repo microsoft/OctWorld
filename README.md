@@ -30,6 +30,10 @@ implement consent before enabling them.
 [Microsoft's official asset host](https://uhf.microsoft.com/images/microsoft/RE1Mu3b.png),
 served locally and linked to the Microsoft homepage.
 
+The header icon and favicon use `assets/microsoft-symbol.png`, the square
+four-color symbol cropped from that official logotype, with its colors and
+layout preserved.
+
 The Terms of Use fwlink (`206977`) was verified to resolve to Microsoft's
 [Terms of Use](https://www.microsoft.com/en-us/legal/terms-of-use).
 Keep all footer links available on small screens and without JavaScript, and
