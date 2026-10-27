@@ -1,7 +1,7 @@
 # OctWorld: Long-Range World-Consistent Video Generation with Octree-based 3D Mapping
 
 [![Paper](https://img.shields.io/badge/Paper-arXiv-b31b1b.svg)](https://arxiv.org/abs/2609.03919)
-[![Project Page](https://img.shields.io/badge/Project-Website-blue)](https://maxtirerror.github.io/octworldpage/)
+[![Project Page](https://img.shields.io/badge/Project-Website-blue)](https://microsoft.github.io/OctWorld/)
 [![Code](https://img.shields.io/badge/GitHub-microsoft%2FOctWorld-181717?logo=github)](https://github.com/microsoft/OctWorld)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
