@@ -1,0 +1,36 @@
+# Local weights, generated outputs, and internal validation artifacts
+/model_weights/
+/outputs/
+/release/
+
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local environments and credentials
+.conda/
+.venv/
+venv/
+.env
+.env.*
+*.env
+!.env.example
+
+# Editor files, logs, and temporary files
+.vscode/
+.idea/
+.DS_Store
+*.log
+*.tmp
+*.swp
+*.swo
+*~

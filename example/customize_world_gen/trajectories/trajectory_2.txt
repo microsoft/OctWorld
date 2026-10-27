@@ -1,0 +1,11 @@
+# Ten-turn lateral and pull-out trajectory.
+pan_right 45.0
+pan_left 45.0
+move_left 1.0
+pan_left 45.0
+pull_out 1.0
+pan_left 45.0
+pan_right 45.0
+pull_out 1.0
+move_right 1.0
+pan_right 45.0

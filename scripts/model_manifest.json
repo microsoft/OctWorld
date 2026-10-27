@@ -1,0 +1,73 @@
+{
+  "wan": {
+    "repo_id": "Wan-AI/Wan2.1-I2V-14B-480P",
+    "revision": "6b73f84e66371cdfe870c72acd6826e1d61cf279",
+    "directory": "Wan2.1-I2V-14B-480P",
+    "files": [
+      ["Wan2.1_VAE.pth", 507609880, "sha256", "38071ab59bd94681c686fa51d75a1968f64e470262043be31f7a094e442fd981"],
+      ["models_t5_umt5-xxl-enc-bf16.pth", 11361920418, "sha256", "7cace0da2b446bbbbc57d031ab6cf163a3d59b366da94e5afe36745b746fd81d"],
+      ["models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth", 4772359047, "sha256", "628c9998b613391f193eb67ff68da9667d75f492911e4eb3decf23460a158c38"],
+      ["google/umt5-xxl/special_tokens_map.json", 6623, "git-sha1", "14855e7052ffbb595057dfd791d293c1c940db2c"],
+      ["google/umt5-xxl/spiece.model", 4548313, "sha256", "e3909a67b780650b35cf529ac782ad2b6b26e6d1f849d3fbb6a872905f452458"],
+      ["google/umt5-xxl/tokenizer.json", 16837417, "sha256", "6e197b4d3dbd71da14b4eb255f4fa91c9c1f2068b20a2de2472967ca3d22602b"],
+      ["google/umt5-xxl/tokenizer_config.json", 61728, "git-sha1", "4e1cc1cd85599ce0b47fd0a746af188fe4043ff2"],
+      ["xlm-roberta-large/sentencepiece.bpe.model", 5069051, "sha256", "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865"],
+      ["xlm-roberta-large/special_tokens_map.json", 280, "git-sha1", "d5698132694f4f1bcff08fa7d937b1701812598e"],
+      ["xlm-roberta-large/tokenizer.json", 17082660, "sha256", "62c24cdc13d4c9952d63718d6c9fa4c287974249e16b7ade6d5a85e7bbb75626"],
+      ["xlm-roberta-large/tokenizer_config.json", 418, "git-sha1", "6de1940d16d38be9877bf7cc228c9377841b311f"]
+    ]
+  },
+  "da3": {
+    "repo_id": "depth-anything/DA3NESTED-GIANT-LARGE-1.1",
+    "revision": "b2359bdf726fb44ef62acca04d629dcf158053e7",
+    "directory": "da3",
+    "files": [
+      ["config.json", 3113, "git-sha1", "0c9ba5b7641a989502f845180f03b09c632f8f09"],
+      ["model.safetensors", 6759558100, "sha256", "8ebe871a022ed58d2fc8fdfb2ebdb31d57b60fe39611c849095851a7b7c6020c"]
+    ]
+  },
+  "raft": {
+    "url": "https://download.pytorch.org/models/raft_large_C_T_SKHT_V2-ff5fadd5.pth",
+    "directory": "raft",
+    "files": [
+      ["raft_large_C_T_SKHT_V2-ff5fadd5.pth", 21106607, "sha256", "ff5fadd56d26b40647388883af1547351ea17868b765c05b27231e72dd16a322"]
+    ]
+  },
+  "skyseg": {
+    "repo_id": "JianyuanWang/skyseg",
+    "revision": "3ba8c6df1d9ba9ff26f637c7ba9568ac11a9aa7f",
+    "directory": "skyseg",
+    "files": [
+      ["skyseg.onnx", 175997079, "sha256", "ab9c34c64c3d821220a2886a4a06da4642ffa14d5b30e8d5339056a089aa1d39"]
+    ]
+  },
+  "moge": {
+    "repo_id": "Ruicheng/moge-vitl",
+    "revision": "ad326bfb61facd6c52b5a825bc1e34d7c97d9672",
+    "directory": "moge",
+    "files": [
+      ["model.pt", 1256823446, "sha256", "da96b09a0485a3c45a5aa455e67743c8b4efc4dd8437c1f2aa93c2b4303d957f"]
+    ]
+  },
+  "qwen": {
+    "repo_id": "Qwen/Qwen3-VL-8B-Instruct",
+    "revision": "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b",
+    "directory": "Qwen3-VL-8B-Instruct",
+    "files": [
+      ["chat_template.json", 5499, "git-sha1", "1081bacf1af7c7c6de4a585ce02cd0fd34e382da"],
+      ["config.json", 1474, "git-sha1", "0e2df614c5fe1ad2b6b540c8625bebf2d7ec43ca"],
+      ["generation_config.json", 269, "git-sha1", "e116347d7ef42621c7a5957f82c015c38d939c1f"],
+      ["merges.txt", 1671839, "git-sha1", "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0"],
+      ["model-00001-of-00004.safetensors", 4902275944, "sha256", "d5d0aef0eb170fc7453a296c43c0849a56f510555d3588e4fd662bb35490aefa"],
+      ["model-00002-of-00004.safetensors", 4915962496, "sha256", "8be88fb5501e4d5719a6d4cc212e6a13480330e74f3e8c77daa1a68f199106b5"],
+      ["model-00003-of-00004.safetensors", 4999831048, "sha256", "83de00eafe6e0d57ccd009dbcf71c9974d74df2f016c27afb7e95aafd16b2192"],
+      ["model-00004-of-00004.safetensors", 2716270024, "sha256", "0a88b98e9f96270973f567e6a2c103ede6ccdf915ca3075e21c755604d0377a5"],
+      ["model.safetensors.index.json", 67759, "git-sha1", "5857ec62530eb589b1876034dd5386f1d98131a6"],
+      ["preprocessor_config.json", 390, "git-sha1", "2ea84a437d448ff71b08df68fdd949d5cc4ebb64"],
+      ["tokenizer.json", 7032403, "git-sha1", "c6cc1014128b19d1fc46b1d30a23e3b1d35db421"],
+      ["tokenizer_config.json", 10868, "git-sha1", "d3d3763207692c78780f4bf42d4dadf49a5c8012"],
+      ["video_preprocessor_config.json", 385, "git-sha1", "3ba673a5ad7d4d13f54155ecd38b2a94a6dac8fe"],
+      ["vocab.json", 2776833, "git-sha1", "4783fe10ac3adce15ac8f358ef5462739852c569"]
+    ]
+  }
+}

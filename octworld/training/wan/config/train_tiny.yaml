@@ -1,0 +1,48 @@
+# octworld/training/wan/config/train_tiny.yaml
+#
+# Tiny validation config: small random DiT + fake (random-tensor) dataset.
+# Mirrors train_base.yaml so the same init_training_folder.py / train.py drive
+# it, but with a tiny model and the wan_framepack_fake dataset for fast,
+# disk-free pipeline / shape validation.
+experiment:
+  data_tag: tiny           # used to derive experiment_name
+
+model:
+  variant: tiny             # wan14b_i2v / tiny
+  framepack_type: f1k1f16k4f2k2f1k1_g20
+  camera_in_dim: 6
+  use_gradient_checkpointing: false
+  shift: 3.0                      # flow-shift
+  random_drop_rate: 0.1            # random frame dropping rate
+  neg_text_embed_path: neg_text_embed.pt
+
+data:
+  data_name: wan_framepack_fake   # wan_framepack_dl3dv (real) / wan_framepack_fake
+  target_path: ${oc.env:DATA_PATH}
+  metadata_path: train_metadata.csv
+  gen_frames: 20
+  load_raymap: true
+
+basic:
+  global_batch_size: 4            # used to derive experiment_name
+  micro_batch_size: 2             # per-GPU per-step
+  gradient_accumulation_steps: 1  # global_batch_size = micro * grad_accum * world_size
+  max_steps: 100
+  grad_clip: 1.0
+  seed: 0
+  num_workers: 2
+
+  optimizer:
+    name: AdamW
+    lr: 1.0e-4
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+
+  fsdp:
+    mesh_mode: 2d                   # 1d / 2d (HSDP)
+    param_dtype: bfloat16
+
+  logging:
+    i_log: 10
+    i_save: 500
+    tb_subdir: tb_logs
